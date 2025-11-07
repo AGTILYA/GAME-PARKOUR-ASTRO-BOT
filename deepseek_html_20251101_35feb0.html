@@ -1,0 +1,3694 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Астро-Бот: Паркур — 10 миров с боссом и ловушками</title>
+  <style>
+    :root{--bg:#ffffff;--fg:#000000;--accent:#0099ff;--platform:#2b3a55}
+    html,body{height:100%;margin:0;font-family:Inter, Roboto, system-ui, sans-serif;background:var(--bg);color:var(--fg);overflow:hidden}
+    #gameWrap{display:flex;align-items:center;justify-content:center;height:100vh;width:100vw}
+    canvas{display:block;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.1);background:white}
+    .ui{position:fixed;left:18px;top:18px;color:var(--fg);font-weight:600;z-index:50}
+    .ui .hint{opacity:.9;font-size:13px;margin-top:6px}
+    .controls{position:fixed;right:18px;top:18px;display:flex;gap:8px;z-index:50}
+    .btn{background:rgba(0,0,0,.06);border:1px solid rgba(0,0,0,.04);padding:8px 10px;border-radius:8px;color:var(--fg);cursor:pointer}
+    .mobile-touch{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;display:flex;gap:14px;z-index:50}
+    .touch-btn{background:rgba(0,0,0,.06);border-radius:999px;padding:16px;min-width:64px;text-align:center}
+    #centerBtn{display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:200;padding:24px 36px;font-size:24px;border-radius:14px;border:none;background:var(--accent);color:white;font-weight:800;box-shadow:0 12px 30px rgba(0,0,0,0.2);cursor:pointer}
+    .levelBar{position:fixed;left:50%;transform:translateX(-50%);top:18px;width:320px;height:10px;background:rgba(0,0,0,0.1);border-radius:999px;overflow:hidden}
+    .levelFill{height:100%;width:0%;background:linear-gradient(90deg,var(--accent),#6fdfff)}
+    .volume-control{position:fixed;right:18px;top:60px;display:flex;align-items:center;gap:8px;z-index:50}
+    .volume-slider{width:80px;height:6px;background:rgba(0,0,0,0.1);border-radius:3px;position:relative;cursor:pointer}
+    .volume-fill{position:absolute;left:0;top:0;height:100%;background:var(--accent);border-radius:3px;width:30%}
+    .volume-knob{position:absolute;right:0;top:50%;transform:translate(50%,-50%);width:16px;height:16px;background:var(--accent);border-radius:50%;cursor:pointer}
+    .boss-health{position:fixed;left:50%;transform:translateX(-50%);bottom:80px;width:300px;height:20px;background:rgba(0,0,0,0.2);border-radius:10px;overflow:hidden;display:none;z-index:50}
+    .boss-health-fill{height:100%;width:100%;background:linear-gradient(90deg,#ff0000,#ff6b6b);transition:width 0.3s}
+    .boss-name{position:fixed;left:50%;transform:translateX(-50%);bottom:105px;color:#ff0000;font-weight:800;font-size:18px;text-shadow:0 2px 4px rgba(0,0,0,0.5);display:none;z-index:50}
+    .damage-indicator{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:100%;height:100%;background:rgba(255,0,0,0.3);pointer-events:none;opacity:0;transition:opacity 0.3s;z-index:100}
+    .player-health{position:fixed;left:18px;top:90px;display:flex;align-items:center;gap:8px;z-index:50}
+    .health-bar{width:100px;height:12px;background:rgba(0,0,0,0.2);border-radius:6px;overflow:hidden}
+    .health-fill{height:100%;width:100%;background:linear-gradient(90deg,#00ff00,#66ff66);transition:width 0.3s}
+    .health-text{font-size:12px;font-weight:700;color:#333}
+    @media(min-width:900px){.mobile-touch{display:none}}
+  </style>
+</head>
+<body>
+  <div id="gameWrap">
+    <canvas id="game"></canvas>
+  </div>
+  <div class="ui">
+    <div id="score">Очки: 0</div>
+    <div class="hint" id="hint">Прыгай, собирай звезды, избегай ловушек!</div>
+    <div id="levelText" style="margin-top:8px;opacity:.9;font-weight:700">Уровень: 1 / 10</div>
+  </div>
+  <div class="player-health">
+    <div class="health-bar">
+      <div class="health-fill" id="healthFill"></div>
+    </div>
+    <div class="health-text" id="healthText">100%</div>
+  </div>
+  <div class="controls">
+    <div class="btn" id="toggleSound">Звук: вкл</div>
+    <div class="btn" id="toggleMusic">Музыка: вкл</div>
+  </div>
+  <div class="volume-control">
+    <div class="volume-slider" id="volumeSlider">
+      <div class="volume-fill" id="volumeFill"></div>
+      <div class="volume-knob" id="volumeKnob"></div>
+    </div>
+  </div>
+  <div class="levelBar"><div class="levelFill" id="levelFill"></div></div>
+  <div class="boss-health" id="bossHealth">
+    <div class="boss-health-fill" id="bossHealthFill"></div>
+  </div>
+  <div class="boss-name" id="bossName">ТЕНЕВОЙ СТРАЖ</div>
+  <div class="damage-indicator" id="damageIndicator"></div>
+  <button id="centerBtn">Перезапустить</button>
+  <div class="mobile-touch">
+    <div id="jumpTouch" class="touch-btn">Прыжок</div>
+    <div id="leftTouch" class="touch-btn">Назад</div>
+    <div id="rightTouch" class="touch-btn">Вперёд</div>
+  </div>
+
+  <script>
+    // Astro-Bot Parkour — Level themes: 1 = city, 2 = forest, 3 = space, 4 = desert, 5 = boss, 6 = crystal, 7 = cloud, 8 = volcano, 9 = jungle, 10 = final
+    // Optional images (place beside HTML): стою.png, дп1.png, дп2.png, ходьба1..4.png, падение.png
+    // environment: дом.png (city), фонарь.png (city), дерево.png (forest), куст.png (forest), астероид.png (space), планета.png (space), кактус.png (desert), пирамида.png (desert), босс.png (boss), кристалл.png (crystal), облако.png (cloud), вулкан.png (volcano), лиана.png (jungle), портал.png (final)
+    // music: 1.mp3 (city), 2.mp3 (forest), 3.mp3 (space), 4.mp3 (desert), 5.mp3 (boss), 6.mp3 (crystal), 7.mp3 (cloud), 8.mp3 (volcano), 9.mp3 (jungle), 10.mp3 (final)
+
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    let W = window.innerWidth, H = window.innerHeight; canvas.width = W; canvas.height = H;
+
+    // Character sprites (optional)
+    const idleImg = new Image(); idleImg.src='стою.png'; let idleLoaded=false; idleImg.onload=()=>idleLoaded=true;
+    const jump1Img = new Image(); jump1Img.src='дп1.png'; let jump1Loaded=false; jump1Img.onload=()=>jump1Loaded=true;
+    const jump2Img = new Image(); jump2Img.src='дп2.png'; let jump2Loaded=false; jump2Img.onload=()=>jump2Loaded=true;
+    const fallImg = new Image(); fallImg.src='падение.png'; let fallLoaded=false; fallImg.onload=()=>fallLoaded=true;
+
+    const walkNames=['ходьба1.png','ходьба2.png','ходьба3.png','ходьба4.png'];
+    const walkImgs=[]; let walkLoadedCount=0; for(let n of walkNames){ const im=new Image(); im.src=n; im.onload=()=>walkLoadedCount++; im.onerror=()=>{}; walkImgs.push(im);} function walkFramesLoaded(){ return walkLoadedCount>=walkNames.length; }
+
+    // Environment images (optional)
+    const houseImg = new Image(); houseImg.src='дом.png'; let houseLoaded=false; houseImg.onload=()=>houseLoaded=true; houseImg.onerror=()=>{};
+    const lampImg = new Image(); lampImg.src='фонарь.png'; let lampLoaded=false; lampImg.onload=()=>lampLoaded=true; lampImg.onerror=()=>{};
+    const treeImg = new Image(); treeImg.src='дерево.png'; let treeLoaded=false; treeImg.onload=()=>treeLoaded=true; treeImg.onerror=()=>{};
+    const bushImg = new Image(); bushImg.src='куст.png'; let bushLoaded=false; bushImg.onload=()=>bushLoaded=true; bushImg.onerror=()=>{};
+    const asteroidImg = new Image(); asteroidImg.src='астероид.png'; let asteroidLoaded=false; asteroidImg.onload=()=>asteroidLoaded=true; asteroidImg.onerror=()=>{};
+    const planetImg = new Image(); planetImg.src='планета.png'; let planetLoaded=false; planetImg.onload=()=>planetLoaded=true; planetImg.onerror=()=>{};
+    const cactusImg = new Image(); cactusImg.src='кактус.png'; let cactusLoaded=false; cactusImg.onload=()=>cactusLoaded=true; cactusImg.onerror=()=>{};
+    const pyramidImg = new Image(); pyramidImg.src='пирамида.png'; let pyramidLoaded=false; pyramidImg.onload=()=>pyramidLoaded=true; pyramidImg.onerror=()=>{};
+    const bossImg = new Image(); bossImg.src='босс.png'; let bossLoaded=false; bossImg.onload=()=>bossLoaded=true; bossImg.onerror=()=>{};
+    const crystalImg = new Image(); crystalImg.src='кристалл.png'; let crystalLoaded=false; crystalImg.onload=()=>crystalLoaded=true; crystalImg.onerror=()=>{};
+    const cloudImg = new Image(); cloudImg.src='облако.png'; let cloudLoaded=false; cloudImg.onload=()=>cloudLoaded=true; cloudImg.onerror=()=>{};
+    const volcanoImg = new Image(); volcanoImg.src='вулкан.png'; let volcanoLoaded=false; volcanoImg.onload=()=>volcanoLoaded=true; volcanoImg.onerror=()=>{};
+    const vineImg = new Image(); vineImg.src='лиана.png'; let vineLoaded=false; vineImg.onload=()=>vineLoaded=true; vineImg.onerror=()=>{};
+    const portalImg = new Image(); portalImg.src='портал.png'; let portalLoaded=false; portalImg.onload=()=>portalLoaded=true; portalImg.onerror=()=>{};
+
+    // Music
+    const cityMusic = new Audio('1.mp3');     // Уровень 1: Город
+    const forestMusic = new Audio('2.mp3');   // Уровень 2: Лес
+    const spaceMusic = new Audio('3.mp3');    // Уровень 3: Космос
+    const desertMusic = new Audio('4.mp3');   // Уровень 4: Пустыня
+    const bossMusic = new Audio('5.mp3');     // Уровень 5: Босс
+    const crystalMusic = new Audio('6.mp3');  // Уровень 6: Кристальный мир
+    const cloudMusic = new Audio('7.mp3');    // Уровень 7: Облачный мир
+    const volcanoMusic = new Audio('8.mp3');  // Уровень 8: Вулканический мир
+    const jungleMusic = new Audio('9.mp3');   // Уровень 9: Джунгли
+    const finalMusic = new Audio('10.mp3');   // Уровень 10: Финальный уровень
+    cityMusic.loop = true;
+    forestMusic.loop = true;
+    spaceMusic.loop = true;
+    desertMusic.loop = true;
+    bossMusic.loop = true;
+    crystalMusic.loop = true;
+    cloudMusic.loop = true;
+    volcanoMusic.loop = true;
+    jungleMusic.loop = true;
+    finalMusic.loop = true;
+    let musicOn = true;
+    let currentMusic = null;
+    let musicVolume = 0.3;
+
+    // Levels
+    const levels = [
+      { name: 'Городской квартал', length: 3600, theme: 'city', minW:140, maxW:320, minGap:40, maxGap:130, minYRatio:0.6, maxYRatio:0.82, grav:1500, jump:-520 },
+      { name: 'Лесной пояс', length: 4200, theme: 'forest', minW:120, maxW:300, minGap:50, maxGap:200, minYRatio:0.45, maxYRatio:0.78, grav:1600, jump:-560 },
+      { name: 'Космическая станция', length: 4800, theme: 'space', minW:100, maxW:280, minGap:60, maxGap:180, minYRatio:0.4, maxYRatio:0.75, grav:1400, jump:-580 },
+      { name: 'Пустынный оазис', length: 5200, theme: 'desert', minW:130, maxW:340, minGap:45, maxGap:160, minYRatio:0.55, maxYRatio:0.8, grav:1550, jump:-540 },
+      { name: 'Логово Теневого Стража', length: 2000, theme: 'boss', minW:200, maxW:400, minGap:30, maxGap:100, minYRatio:0.5, maxYRatio:0.7, grav:1700, jump:-600 },
+      { name: 'Кристальные пещеры', length: 4500, theme: 'crystal', minW:110, maxW:290, minGap:35, maxGap:120, minYRatio:0.5, maxYRatio:0.75, grav:1450, jump:-570 },
+      { name: 'Небесные просторы', length: 5000, theme: 'cloud', minW:150, maxW:350, minGap:50, maxGap:140, minYRatio:0.4, maxYRatio:0.65, grav:1350, jump:-590 },
+      { name: 'Вулканический мир', length: 5500, theme: 'volcano', minW:140, maxW:320, minGap:40, maxGap:130, minYRatio:0.6, maxYRatio:0.82, grav:1500, jump:-520, hasLava: true },
+      { name: 'Затерянные джунгли', length: 5800, theme: 'jungle', minW:130, maxW:310, minGap:45, maxGap:150, minYRatio:0.5, maxYRatio:0.8, grav:1520, jump:-550 },
+      { name: 'Финальный портал', length: 6000, theme: 'final', minW:160, maxW:380, minGap:30, maxGap:120, minYRatio:0.4, maxYRatio:0.7, grav:1650, jump:-620, hasBoss: true }
+    ];
+    let currentLevel = 0;
+
+    // State
+    let running=true, score=0, soundOn=true, levelComplete=false;
+    const player = { x:120, y:300, w:36, h:46, vx:0, vy:0, onGround:false, jumps:0, maxJumps:2, facing:1, health: 100, maxHealth: 100, invulnerable: 0, hits: 0 };
+    
+    // Lava pools for volcano level
+    let lavaPools = [];
+    let lavaTimer = 0;
+    
+    // Volcanic eruptions
+    let eruptions = [];
+    let eruptionTimer = 0;
+    
+    // Jungle elements
+    let jungleVines = [];
+    let jungleTimer = 0;
+    
+    // Final level elements
+    let finalPortals = [];
+    let energyFields = [];
+    let finalTimer = 0;
+    
+    // Traps for all levels
+    let traps = [];
+
+    // Boss - УВЕЛИЧЕННЫЙ РАЗМЕР
+    const boss = {
+      x: 0, y: 0, w: 320, h: 380, // Увеличено с 180x200 до 320x380
+      health: 100, maxHealth: 100,
+      phase: 1, attackTimer: 0, moveTimer: 0,
+      vx: 0, vy: 0, active: false,
+      attacks: [],
+      animationTimer: 0,
+      wingAngle: 0,
+      glowIntensity: 0
+    };
+
+    // Final Boss
+    const finalBoss = {
+      x: 0, y: 0, w: 220, h: 240,
+      health: 150, maxHealth: 150,
+      phase: 1, attackTimer: 0, moveTimer: 0,
+      vx: 0, vy: 0, active: false,
+      attacks: [],
+      animationTimer: 0,
+      rotation: 0,
+      glowIntensity: 0,
+      parts: []
+    };
+
+    let GRAV=1500, JUMP_V=-520, MOVE_ACCEL=3200;
+    let cameraX=0, platforms=[], stars=[], obstacles=[], lastPlatformX=0;
+    let last = performance.now();
+
+    // Walk anim
+    let walkTimer=0, walkFrame=0; const WALK_FRAME_INTERVAL = 0.12;
+
+    // Background elements for each theme
+    let backgroundElements = [];
+
+    // UI elements
+    const bossHealth = document.getElementById('bossHealth');
+    const bossHealthFill = document.getElementById('bossHealthFill');
+    const bossName = document.getElementById('bossName');
+    const damageIndicator = document.getElementById('damageIndicator');
+    const healthFill = document.getElementById('healthFill');
+    const healthText = document.getElementById('healthText');
+
+    // Controls
+    const keys = {};
+    window.addEventListener('keydown', e=>{ if(e.code==='Space'){ e.preventDefault(); if(!running){ onCenterAction(); return; } } keys[e.code]=true; if(e.code==='KeyR' && !running) onCenterAction(); });
+    window.addEventListener('keyup', e=>{ keys[e.code]=false; });
+    document.getElementById('jumpTouch').addEventListener('touchstart', e=>{ e.preventDefault(); doJump(); });
+    document.getElementById('leftTouch').addEventListener('touchstart', e=>{ e.preventDefault(); keys.ArrowLeft=true; });
+    document.getElementById('leftTouch').addEventListener('touchend', e=>{ e.preventDefault(); keys.ArrowLeft=false; });
+    document.getElementById('rightTouch').addEventListener('touchstart', e=>{ e.preventDefault(); keys.ArrowRight=true; });
+    document.getElementById('rightTouch').addEventListener('touchend', e=>{ e.preventDefault(); keys.ArrowRight=false; });
+    document.getElementById('toggleSound').addEventListener('click', ()=>{ soundOn=!soundOn; document.getElementById('toggleSound').innerText = 'Звук: ' + (soundOn ? 'вкл' : 'выкл'); });
+    document.getElementById('toggleMusic').addEventListener('click', toggleMusic);
+    const centerBtn = document.getElementById('centerBtn'); centerBtn.addEventListener('click', onCenterAction);
+
+    // Volume control
+    const volumeSlider = document.getElementById('volumeSlider');
+    const volumeFill = document.getElementById('volumeFill');
+    const volumeKnob = document.getElementById('volumeKnob');
+    let isDraggingVolume = false;
+
+    function initVolumeControl() {
+      updateVolumeDisplay();
+      
+      volumeSlider.addEventListener('mousedown', startVolumeDrag);
+      volumeKnob.addEventListener('mousedown', startVolumeDrag);
+      
+      volumeSlider.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        startVolumeDrag(e.touches[0]);
+      });
+      
+      volumeKnob.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        startVolumeDrag(e.touches[0]);
+      });
+      
+      document.addEventListener('mousemove', handleVolumeDrag);
+      document.addEventListener('touchmove', (e) => {
+        if (isDraggingVolume) {
+          e.preventDefault();
+          handleVolumeDrag(e.touches[0]);
+        }
+      });
+      
+      document.addEventListener('mouseup', stopVolumeDrag);
+      document.addEventListener('touchend', stopVolumeDrag);
+    }
+
+    function startVolumeDrag(e) {
+      isDraggingVolume = true;
+      handleVolumeDrag(e);
+    }
+
+    function handleVolumeDrag(e) {
+      if (!isDraggingVolume) return;
+      
+      const rect = volumeSlider.getBoundingClientRect();
+      let x = e.clientX - rect.left;
+      x = Math.max(0, Math.min(x, rect.width));
+      
+      const volume = x / rect.width;
+      setMusicVolume(volume);
+    }
+
+    function stopVolumeDrag() {
+      isDraggingVolume = false;
+    }
+
+    function setMusicVolume(volume) {
+      musicVolume = Math.max(0, Math.min(1, volume));
+      updateVolumeDisplay();
+      updateMusicVolume();
+    }
+
+    function updateVolumeDisplay() {
+      const percent = musicVolume * 100;
+      volumeFill.style.width = percent + '%';
+      volumeKnob.style.right = (100 - percent) + '%';
+    }
+
+    function updateMusicVolume() {
+      if (currentMusic) {
+        currentMusic.volume = musicVolume;
+      }
+    }
+
+    function toggleMusic() {
+      musicOn = !musicOn;
+      document.getElementById('toggleMusic').innerText = 'Музыка: ' + (musicOn ? 'вкл' : 'выкл');
+      
+      if (musicOn && running) {
+        playLevelMusic(currentLevel);
+      } else {
+        stopMusic();
+      }
+    }
+
+    function playLevelMusic(levelIndex) {
+      stopMusic();
+      
+      if (!musicOn) return;
+      
+      if (levelIndex === 0) {
+        currentMusic = cityMusic;
+      } else if (levelIndex === 1) {
+        currentMusic = forestMusic;
+      } else if (levelIndex === 2) {
+        currentMusic = spaceMusic;
+      } else if (levelIndex === 3) {
+        currentMusic = desertMusic;
+      } else if (levelIndex === 4) {
+        currentMusic = bossMusic;
+      } else if (levelIndex === 5) {
+        currentMusic = crystalMusic;
+      } else if (levelIndex === 6) {
+        currentMusic = cloudMusic;
+      } else if (levelIndex === 7) {
+        currentMusic = volcanoMusic;
+      } else if (levelIndex === 8) {
+        currentMusic = jungleMusic;
+      } else {
+        currentMusic = finalMusic;
+      }
+      
+      currentMusic.volume = musicVolume;
+      currentMusic.currentTime = 0;
+      currentMusic.play().catch(e => console.log('Music play failed:', e));
+    }
+
+    function stopMusic() {
+      if (currentMusic) {
+        currentMusic.pause();
+        currentMusic.currentTime = 0;
+      }
+    }
+
+    function updatePlayerHealth() {
+      const percent = (player.health / player.maxHealth) * 100;
+      healthFill.style.width = percent + '%';
+      healthText.innerText = Math.max(0, Math.floor(percent)) + '%';
+      
+      // Change color based on health
+      if (percent > 60) {
+        healthFill.style.background = 'linear-gradient(90deg, #00ff00, #66ff66)';
+      } else if (percent > 30) {
+        healthFill.style.background = 'linear-gradient(90deg, #ffff00, #ffff66)';
+      } else {
+        healthFill.style.background = 'linear-gradient(90deg, #ff0000, #ff6666)';
+      }
+    }
+
+    function initBoss() {
+      boss.x = 1350;
+      boss.y = H * 0.2; // Поднят выше из-за увеличенного размера
+      boss.health = boss.maxHealth;
+      boss.phase = 1;
+      boss.attackTimer = 0;
+      boss.moveTimer = 0;
+      boss.vx = 0;
+      boss.vy = 0;
+      boss.active = true;
+      boss.attacks = [];
+      boss.animationTimer = 0;
+      boss.wingAngle = 0;
+      boss.glowIntensity = 0;
+      
+      // Show boss UI
+      bossHealth.style.display = 'block';
+      bossName.style.display = 'block';
+      bossName.innerText = 'ТЕНЕВОЙ СТРАЖ';
+      updateBossHealth();
+    }
+
+    function initFinalBoss() {
+      finalBoss.x = levels[9].length - 500;
+      finalBoss.y = H * 0.25;
+      finalBoss.health = finalBoss.maxHealth;
+      finalBoss.phase = 1;
+      finalBoss.attackTimer = 0;
+      finalBoss.moveTimer = 0;
+      finalBoss.vx = 0;
+      finalBoss.vy = 0;
+      finalBoss.active = true;
+      finalBoss.attacks = [];
+      finalBoss.animationTimer = 0;
+      finalBoss.rotation = 0;
+      finalBoss.glowIntensity = 0;
+      finalBoss.parts = [];
+      
+      // Create orbiting parts for final boss
+      for (let i = 0; i < 4; i++) {
+        finalBoss.parts.push({
+          angle: (i / 4) * Math.PI * 2,
+          distance: 120,
+          size: 30 + Math.random() * 20,
+          speed: 1 + Math.random() * 0.5
+        });
+      }
+      
+      // Show boss UI
+      bossHealth.style.display = 'block';
+      bossName.style.display = 'block';
+      bossName.innerText = 'КОСМИЧЕСКИЙ ВЛАСТЕЛИН';
+      updateFinalBossHealth();
+    }
+
+    function updateBossHealth() {
+      const percent = (boss.health / boss.maxHealth) * 100;
+      bossHealthFill.style.width = percent + '%';
+    }
+
+    function updateFinalBossHealth() {
+      const percent = (finalBoss.health / finalBoss.maxHealth) * 100;
+      bossHealthFill.style.width = percent + '%';
+    }
+
+    function updateBoss(dt) {
+      if (!boss.active) return;
+      
+      boss.attackTimer += dt;
+      boss.moveTimer += dt;
+      boss.animationTimer += dt;
+      boss.wingAngle = Math.sin(boss.animationTimer * 3) * 0.3;
+      boss.glowIntensity = 0.5 + Math.sin(boss.animationTimer * 5) * 0.3;
+      
+      // Boss movement
+      if (boss.moveTimer > 2) {
+        boss.vx = (Math.random() - 0.5) * 200;
+        boss.vy = (Math.random() - 0.5) * 300;
+        boss.moveTimer = 0;
+      }
+      
+      boss.x += boss.vx * dt;
+      boss.y += boss.vy * dt;
+      
+      // Keep boss in bounds
+      boss.x = Math.max(1000, Math.min(1600, boss.x));
+      boss.y = Math.max(H * 0.1, Math.min(H * 0.4, boss.y));
+      
+      // Boss attacks
+      if (boss.attackTimer > (boss.phase === 1 ? 3 : 2)) {
+        performBossAttack();
+        boss.attackTimer = 0;
+      }
+      
+      // Update attacks
+      for (let i = boss.attacks.length - 1; i >= 0; i--) {
+        const attack = boss.attacks[i];
+        attack.x += attack.vx * dt;
+        attack.y += attack.vy * dt;
+        
+        // Remove off-screen attacks
+        if (attack.x < cameraX - 100 || attack.x > cameraX + W + 100 || 
+            attack.y < -100 || attack.y > H + 100) {
+          boss.attacks.splice(i, 1);
+        }
+        
+        // Check collision with player
+        const dx = (player.x + player.w/2) - (attack.x + attack.w/2);
+        const dy = (player.y + player.h/2) - (attack.y + attack.h/2);
+        const distance = Math.sqrt(dx*dx + dy*dy);
+        
+        if (distance < (player.w/2 + attack.w/2) && player.invulnerable <= 0) {
+          player.health -= 20;
+          player.hits += 1;
+          player.invulnerable = 1.0;
+          player.vy = -400;
+          player.vx = (player.x < attack.x ? -300 : 300);
+          if (soundOn) playBeep(220, 0.1);
+          showDamage();
+          updatePlayerHealth();
+          boss.attacks.splice(i, 1);
+          
+          if (player.hits >= 5) {
+            player.health = 0;
+            updatePlayerHealth();
+          }
+        }
+      }
+      
+      // Check if player hits boss (by jumping on head)
+      if (player.vy > 0 && // Falling
+          player.x + player.w > boss.x && 
+          player.x < boss.x + boss.w &&
+          player.y + player.h > boss.y && 
+          player.y < boss.y + boss.h) {
+        
+        boss.health -= 10;
+        player.vy = -500; // Bounce off
+        updateBossHealth();
+        if (soundOn) playBeep(660, 0.08);
+        
+        // Phase transition
+        if (boss.health <= 50 && boss.phase === 1) {
+          boss.phase = 2;
+          if (soundOn) playBeep(880, 0.2);
+        }
+        
+        // Boss defeated
+        if (boss.health <= 0) {
+          boss.active = false;
+          bossHealth.style.display = 'none';
+          bossName.style.display = 'none';
+          levelComplete = true;
+          running = false;
+          showCenterButton('Перейти к следующему уровню');
+          if (soundOn) {
+            playBeep(1320, 0.1);
+            setTimeout(() => playBeep(1760, 0.1), 200);
+            setTimeout(() => playBeep(1320, 0.2), 400);
+          }
+        }
+      }
+    }
+
+    function updateFinalBoss(dt) {
+      if (!finalBoss.active) return;
+      
+      finalBoss.attackTimer += dt;
+      finalBoss.moveTimer += dt;
+      finalBoss.animationTimer += dt;
+      finalBoss.rotation += dt * 0.5;
+      finalBoss.glowIntensity = 0.5 + Math.sin(finalBoss.animationTimer * 4) * 0.3;
+      
+      // Update orbiting parts
+      for (let part of finalBoss.parts) {
+        part.angle += part.speed * dt;
+      }
+      
+      // Final boss movement
+      if (finalBoss.moveTimer > 3) {
+        finalBoss.vx = (Math.random() - 0.5) * 150;
+        finalBoss.vy = (Math.random() - 0.5) * 200;
+        finalBoss.moveTimer = 0;
+      }
+      
+      finalBoss.x += finalBoss.vx * dt;
+      finalBoss.y += finalBoss.vy * dt;
+      
+      // Keep final boss in bounds
+      finalBoss.x = Math.max(levels[9].length - 700, Math.min(levels[9].length - 200, finalBoss.x));
+      finalBoss.y = Math.max(H * 0.15, Math.min(H * 0.4, finalBoss.y));
+      
+      // Final boss attacks
+      if (finalBoss.attackTimer > (finalBoss.phase === 1 ? 2.5 : 1.5)) {
+        performFinalBossAttack();
+        finalBoss.attackTimer = 0;
+      }
+      
+      // Update attacks
+      for (let i = finalBoss.attacks.length - 1; i >= 0; i--) {
+        const attack = finalBoss.attacks[i];
+        attack.x += attack.vx * dt;
+        attack.y += attack.vy * dt;
+        
+        // Remove off-screen attacks
+        if (attack.x < cameraX - 100 || attack.x > cameraX + W + 100 || 
+            attack.y < -100 || attack.y > H + 100) {
+          finalBoss.attacks.splice(i, 1);
+        }
+        
+        // Check collision with player
+        const dx = (player.x + player.w/2) - (attack.x + attack.w/2);
+        const dy = (player.y + player.h/2) - (attack.y + attack.h/2);
+        const distance = Math.sqrt(dx*dx + dy*dy);
+        
+        if (distance < (player.w/2 + attack.w/2) && player.invulnerable <= 0) {
+          player.health -= 25;
+          player.hits += 1;
+          player.invulnerable = 1.0;
+          player.vy = -400;
+          player.vx = (player.x < attack.x ? -300 : 300);
+          if (soundOn) playBeep(220, 0.1);
+          showDamage();
+          updatePlayerHealth();
+          finalBoss.attacks.splice(i, 1);
+          
+          if (player.hits >= 5) {
+            player.health = 0;
+            updatePlayerHealth();
+          }
+        }
+      }
+      
+      // Check if player hits final boss (by jumping on head)
+      if (player.vy > 0 && // Falling
+          player.x + player.w > finalBoss.x && 
+          player.x < finalBoss.x + finalBoss.w &&
+          player.y + player.h > finalBoss.y && 
+          player.y < finalBoss.y + finalBoss.h) {
+        
+        finalBoss.health -= 15;
+        player.vy = -600; // Bounce off
+        updateFinalBossHealth();
+        if (soundOn) playBeep(660, 0.08);
+        
+        // Phase transition
+        if (finalBoss.health <= 75 && finalBoss.phase === 1) {
+          finalBoss.phase = 2;
+          if (soundOn) playBeep(880, 0.2);
+        }
+        
+        // Final boss defeated
+        if (finalBoss.health <= 0) {
+          finalBoss.active = false;
+          bossHealth.style.display = 'none';
+          bossName.style.display = 'none';
+          levelComplete = true;
+          running = false;
+          showCenterButton('ПОБЕДА! Начать заново');
+          if (soundOn) {
+            playBeep(1320, 0.1);
+            setTimeout(() => playBeep(1760, 0.1), 200);
+            setTimeout(() => playBeep(1320, 0.2), 400);
+            setTimeout(() => playBeep(1760, 0.3), 600);
+          }
+        }
+      }
+    }
+
+    function performBossAttack() {
+      const attackTypes = boss.phase === 1 ? 
+        ['projectile', 'projectile', 'wave'] : 
+        ['projectile', 'projectile', 'wave', 'spiral'];
+      
+      const attackType = attackTypes[Math.floor(Math.random() * attackTypes.length)];
+      
+      switch (attackType) {
+        case 'projectile':
+          // Shoot projectile at player
+          const dx = (player.x + player.w/2) - (boss.x + boss.w/2);
+          const dy = (player.y + player.h/2) - (boss.y + boss.h/2);
+          const length = Math.sqrt(dx*dx + dy*dy);
+          const speed = 300;
+          
+          boss.attacks.push({
+            x: boss.x + boss.w/2 - 10,
+            y: boss.y + boss.h/2 - 10,
+            w: 20, h: 20,
+            vx: (dx / length) * speed,
+            vy: (dy / length) * speed,
+            type: 'projectile'
+          });
+          break;
+          
+        case 'wave':
+          // Wave attack
+          for (let i = 0; i < 5; i++) {
+            boss.attacks.push({
+              x: boss.x + boss.w/2 - 15,
+              y: boss.y + boss.h/2 - 15,
+              w: 30, h: 30,
+              vx: 200 * Math.cos(i * Math.PI/2.5),
+              vy: 200 * Math.sin(i * Math.PI/2.5),
+              type: 'wave'
+            });
+          }
+          break;
+          
+        case 'spiral':
+          // Spiral attack (phase 2 only)
+          for (let i = 0; i < 8; i++) {
+            const angle = i * Math.PI/4 + boss.attackTimer * 2;
+            boss.attacks.push({
+              x: boss.x + boss.w/2 - 12,
+              y: boss.y + boss.h/2 - 12,
+              w: 24, h: 24,
+              vx: 150 * Math.cos(angle),
+              vy: 150 * Math.sin(angle),
+              type: 'spiral'
+            });
+          }
+          break;
+      }
+      
+      if (soundOn) playBeep(440, 0.05);
+    }
+
+    function performFinalBossAttack() {
+      const attackTypes = finalBoss.phase === 1 ? 
+        ['projectile', 'wave', 'spiral', 'blackhole'] : 
+        ['projectile', 'wave', 'spiral', 'blackhole', 'laser'];
+      
+      const attackType = attackTypes[Math.floor(Math.random() * attackTypes.length)];
+      
+      switch (attackType) {
+        case 'projectile':
+          // Shoot multiple projectiles at player
+          for (let i = 0; i < 3; i++) {
+            const dx = (player.x + player.w/2) - (finalBoss.x + finalBoss.w/2);
+            const dy = (player.y + player.h/2) - (finalBoss.y + finalBoss.h/2);
+            const length = Math.sqrt(dx*dx + dy*dy);
+            const speed = 350;
+            const spread = (i - 1) * 0.2;
+            
+            finalBoss.attacks.push({
+              x: finalBoss.x + finalBoss.w/2 - 12,
+              y: finalBoss.y + finalBoss.h/2 - 12,
+              w: 24, h: 24,
+              vx: (dx / length + spread) * speed,
+              vy: (dy / length + spread) * speed,
+              type: 'projectile'
+            });
+          }
+          break;
+          
+        case 'wave':
+          // Wave attack with more projectiles
+          for (let i = 0; i < 8; i++) {
+            finalBoss.attacks.push({
+              x: finalBoss.x + finalBoss.w/2 - 15,
+              y: finalBoss.y + finalBoss.h/2 - 15,
+              w: 30, h: 30,
+              vx: 250 * Math.cos(i * Math.PI/4),
+              vy: 250 * Math.sin(i * Math.PI/4),
+              type: 'wave'
+            });
+          }
+          break;
+          
+        case 'spiral':
+          // Spiral attack
+          for (let i = 0; i < 12; i++) {
+            const angle = i * Math.PI/6 + finalBoss.attackTimer * 3;
+            finalBoss.attacks.push({
+              x: finalBoss.x + finalBoss.w/2 - 12,
+              y: finalBoss.y + finalBoss.h/2 - 12,
+              w: 24, h: 24,
+              vx: 200 * Math.cos(angle),
+              vy: 200 * Math.sin(angle),
+              type: 'spiral'
+            });
+          }
+          break;
+          
+        case 'blackhole':
+          // Create a black hole that pulls player
+          finalBoss.attacks.push({
+            x: player.x - 50,
+            y: player.y - 50,
+            w: 100, h: 100,
+            vx: 0, vy: 0,
+            type: 'blackhole',
+            timer: 0,
+            pullStrength: 500
+          });
+          break;
+          
+        case 'laser':
+          // Laser beam attack (phase 2 only)
+          if (finalBoss.phase === 2) {
+            finalBoss.attacks.push({
+              x: finalBoss.x + finalBoss.w/2 - 5,
+              y: finalBoss.y + finalBoss.h,
+              w: 10, h: H - finalBoss.y,
+              vx: 0, vy: 0,
+              type: 'laser',
+              timer: 0
+            });
+          }
+          break;
+      }
+      
+      if (soundOn) playBeep(550, 0.06);
+    }
+
+    function drawBoss(bossRx, bossRy) {
+      if (bossLoaded) {
+        drawSpriteCentered(bossImg, bossRx, bossRy, boss.w, boss.h, 1);
+      } else {
+        ctx.save();
+        ctx.translate(bossRx + boss.w/2, bossRy + boss.h/2);
+        
+        // Аура босса - увеличенная
+        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, boss.w/2 + 40);
+        if (boss.phase === 1) {
+          gradient.addColorStop(0, `rgba(139, 0, 0, ${boss.glowIntensity * 0.4})`);
+          gradient.addColorStop(1, 'rgba(139, 0, 0, 0)');
+        } else {
+          gradient.addColorStop(0, `rgba(75, 0, 130, ${boss.glowIntensity * 0.5})`);
+          gradient.addColorStop(1, 'rgba(75, 0, 130, 0)');
+        }
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(0, 0, boss.w/2 + 40, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Основное тело босса - увеличенное
+        const bodyGradient = ctx.createRadialGradient(-15, -15, 0, 0, 0, boss.w/2);
+        if (boss.phase === 1) {
+          bodyGradient.addColorStop(0, '#8b0000');
+          bodyGradient.addColorStop(1, '#5a0000');
+        } else {
+          bodyGradient.addColorStop(0, '#4b0082');
+          bodyGradient.addColorStop(1, '#2a005a');
+        }
+        ctx.fillStyle = bodyGradient;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, boss.w/2, boss.h/2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Крылья босса - увеличенные
+        ctx.fillStyle = boss.phase === 1 ? '#5a0000' : '#2a005a';
+        
+        // Левое крыло
+        ctx.save();
+        ctx.rotate(-Math.PI/4 + boss.wingAngle);
+        ctx.beginPath();
+        ctx.moveTo(-boss.w/3, 0);
+        ctx.lineTo(-boss.w*1.2, -boss.h/4);
+        ctx.lineTo(-boss.w/3, -boss.h/3);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+        
+        // Правое крыло
+        ctx.save();
+        ctx.rotate(Math.PI/4 - boss.wingAngle);
+        ctx.beginPath();
+        ctx.moveTo(boss.w/3, 0);
+        ctx.lineTo(boss.w*1.2, -boss.h/4);
+        ctx.lineTo(boss.w/3, -boss.h/3);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+        
+        // Глазы босса - увеличенные
+        ctx.fillStyle = boss.phase === 1 ? '#ffff00' : '#ff00ff';
+        ctx.beginPath();
+        ctx.arc(-boss.w/4, -boss.h/8, boss.w/8, 0, Math.PI * 2);
+        ctx.arc(boss.w/4, -boss.h/8, boss.w/8, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Зрачки - увеличенные
+        ctx.fillStyle = '#000000';
+        const pupilOffset = Math.sin(boss.animationTimer * 4) * 5;
+        ctx.beginPath();
+        ctx.arc(-boss.w/4 + pupilOffset, -boss.h/8, boss.w/16, 0, Math.PI * 2);
+        ctx.arc(boss.w/4 + pupilOffset, -boss.h/8, boss.w/16, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Рот босса - увеличенный
+        ctx.strokeStyle = boss.phase === 1 ? '#ffff00' : '#ff00ff';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.arc(0, boss.h/8, boss.w/5, 0, Math.PI);
+        ctx.stroke();
+        
+        // Шипы на спине (только во второй фазе) - увеличенные
+        if (boss.phase === 2) {
+          ctx.fillStyle = '#ff00ff';
+          for (let i = 0; i < 7; i++) {
+            const spikeX = -boss.w/3 + i * (boss.w/7);
+            const spikeHeight = 20 + Math.sin(boss.animationTimer * 5 + i) * 8;
+            ctx.beginPath();
+            ctx.moveTo(spikeX, -boss.h/2);
+            ctx.lineTo(spikeX - 8, -boss.h/2 - spikeHeight);
+            ctx.lineTo(spikeX + 8, -boss.h/2 - spikeHeight);
+            ctx.closePath();
+            ctx.fill();
+          }
+        }
+        
+        ctx.restore();
+      }
+    }
+
+    function drawFinalBoss(bossRx, bossRy) {
+      ctx.save();
+      ctx.translate(bossRx + finalBoss.w/2, bossRy + finalBoss.h/2);
+      ctx.rotate(finalBoss.rotation);
+      
+      // Аура финального босса
+      const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, finalBoss.w/2 + 30);
+      if (finalBoss.phase === 1) {
+        gradient.addColorStop(0, `rgba(0, 100, 200, ${finalBoss.glowIntensity * 0.4})`);
+        gradient.addColorStop(1, 'rgba(0, 100, 200, 0)');
+      } else {
+        gradient.addColorStop(0, `rgba(200, 0, 200, ${finalBoss.glowIntensity * 0.5})`);
+        gradient.addColorStop(1, 'rgba(200, 0, 200, 0)');
+      }
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(0, 0, finalBoss.w/2 + 30, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Основное тело финального босса
+      const bodyGradient = ctx.createRadialGradient(-15, -15, 0, 0, 0, finalBoss.w/2);
+      if (finalBoss.phase === 1) {
+        bodyGradient.addColorStop(0, '#0066cc');
+        bodyGradient.addColorStop(1, '#004499');
+      } else {
+        bodyGradient.addColorStop(0, '#cc00cc');
+        bodyGradient.addColorStop(1, '#990099');
+      }
+      ctx.fillStyle = bodyGradient;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, finalBoss.w/2, finalBoss.h/2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Орбитальные части
+      for (let part of finalBoss.parts) {
+        const partX = Math.cos(part.angle) * part.distance;
+        const partY = Math.sin(part.angle) * part.distance;
+        
+        ctx.fillStyle = finalBoss.phase === 1 ? '#00ccff' : '#ff00ff';
+        ctx.beginPath();
+        ctx.arc(partX, partY, part.size, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Соединительные линии
+        ctx.strokeStyle = finalBoss.phase === 1 ? 'rgba(0, 200, 255, 0.5)' : 'rgba(255, 0, 255, 0.5)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(partX, partY);
+        ctx.stroke();
+      }
+      
+      // Глазы финального босса
+      ctx.fillStyle = finalBoss.phase === 1 ? '#ffffff' : '#ffff00';
+      ctx.beginPath();
+      ctx.arc(-finalBoss.w/5, -finalBoss.h/8, finalBoss.w/12, 0, Math.PI * 2);
+      ctx.arc(finalBoss.w/5, -finalBoss.h/8, finalBoss.w/12, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Зрачки
+      ctx.fillStyle = '#000000';
+      const pupilOffset = Math.sin(finalBoss.animationTimer * 5) * 4;
+      ctx.beginPath();
+      ctx.arc(-finalBoss.w/5 + pupilOffset, -finalBoss.h/8, finalBoss.w/24, 0, Math.PI * 2);
+      ctx.arc(finalBoss.w/5 + pupilOffset, -finalBoss.h/8, finalBoss.w/24, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Рот финального босса
+      ctx.strokeStyle = finalBoss.phase === 1 ? '#ffffff' : '#ffff00';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(0, finalBoss.h/8, finalBoss.w/5, 0, Math.PI);
+      ctx.stroke();
+      
+      // Коронные лучи (только во второй фазе)
+      if (finalBoss.phase === 2) {
+        ctx.fillStyle = '#ffff00';
+        for (let i = 0; i < 8; i++) {
+          const angle = (i / 8) * Math.PI * 2;
+          const rayLength = 40 + Math.sin(finalBoss.animationTimer * 6 + i) * 10;
+          ctx.save();
+          ctx.rotate(angle);
+          ctx.beginPath();
+          ctx.moveTo(0, -finalBoss.h/2);
+          ctx.lineTo(-10, -finalBoss.h/2 - rayLength);
+          ctx.lineTo(10, -finalBoss.h/2 - rayLength);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+      
+      ctx.restore();
+    }
+
+    function generateBackgroundElements(theme) {
+      backgroundElements = [];
+      const count = theme === 'space' || theme === 'final' ? 80 : theme === 'cloud' ? 60 : theme === 'volcano' ? 70 : theme === 'jungle' ? 90 : 40;
+      
+      for (let i = 0; i < count; i++) {
+        let element;
+        const x = Math.random() * levels[currentLevel].length;
+        const y = Math.random() * H * 0.7;
+        const size = 20 + Math.random() * 60;
+        
+        switch (theme) {
+          case 'city':
+            if (Math.random() < 0.3) {
+              element = {
+                x, y, size,
+                type: 'cloud',
+                speed: 0.1 + Math.random() * 0.2
+              };
+            } else {
+              element = {
+                x, y, size: size * 0.7,
+                type: 'bird',
+                speed: 0.3 + Math.random() * 0.4,
+                flap: Math.random() * Math.PI * 2
+              };
+            }
+            break;
+            
+          case 'forest':
+            if (Math.random() < 0.4) {
+              element = {
+                x, y, size: size * 0.5,
+                type: 'butterfly',
+                speed: 0.2 + Math.random() * 0.3,
+                flap: Math.random() * Math.PI * 2
+              };
+            } else {
+              element = {
+                x, y: H * 0.1 + Math.random() * H * 0.1,
+                size: size * 0.3,
+                type: 'leaf',
+                speed: 0.1 + Math.random() * 0.2,
+                rotation: Math.random() * Math.PI * 2
+              };
+            }
+            break;
+            
+          case 'space':
+            element = {
+              x, y, size: 2 + Math.random() * 4,
+              type: 'star',
+              speed: 0.05 + Math.random() * 0.1,
+              brightness: 0.3 + Math.random() * 0.7
+            };
+            break;
+            
+          case 'desert':
+            if (Math.random() < 0.3) {
+              element = {
+                x, y: H * 0.1 + Math.random() * H * 0.2,
+                size: size * 0.4,
+                type: 'tumbleweed',
+                speed: 0.2 + Math.random() * 0.3,
+                rotation: Math.random() * Math.PI * 2
+              };
+            } else {
+              element = {
+                x, y, size: size * 0.6,
+                type: 'vulture',
+                speed: 0.15 + Math.random() * 0.25,
+                flap: Math.random() * Math.PI * 2
+              };
+            }
+            break;
+            
+          case 'boss':
+            element = {
+              x, y, size: size * 0.8,
+              type: 'spark',
+              speed: 0.2 + Math.random() * 0.4,
+              brightness: 0.5 + Math.random() * 0.5
+            };
+            break;
+            
+          case 'crystal':
+            if (Math.random() < 0.5) {
+              element = {
+                x, y, size: size * 0.6,
+                type: 'crystal_shard',
+                speed: 0.1 + Math.random() * 0.2,
+                rotation: Math.random() * Math.PI * 2,
+                hue: Math.random() * 60 + 200 // Blue-purple colors
+              };
+            } else {
+              element = {
+                x, y, size: size * 0.4,
+                type: 'energy_orb',
+                speed: 0.15 + Math.random() * 0.25,
+                pulse: Math.random() * Math.PI * 2
+              };
+            }
+            break;
+            
+          case 'cloud':
+            if (Math.random() < 0.6) {
+              element = {
+                x, y: H * 0.2 + Math.random() * H * 0.4,
+                size: size * 1.2,
+                type: 'fluffy_cloud',
+                speed: 0.08 + Math.random() * 0.15,
+                puff: Math.random() * Math.PI * 2
+              };
+            } else {
+              element = {
+                x, y, size: size * 0.8,
+                type: 'rainbow',
+                speed: 0.12 + Math.random() * 0.2,
+                hue: Math.random() * 360
+              };
+            }
+            break;
+            
+          case 'volcano':
+            if (Math.random() < 0.5) {
+              element = {
+                x, y: H * 0.1 + Math.random() * H * 0.3,
+                size: size * 0.5,
+                type: 'ash',
+                speed: 0.1 + Math.random() * 0.2,
+                brightness: 0.3 + Math.random() * 0.7
+              };
+            } else {
+              element = {
+                x, y, size: size * 0.4,
+                type: 'lava_splash',
+                speed: 0.15 + Math.random() * 0.25,
+                pulse: Math.random() * Math.PI * 2
+              };
+            }
+            break;
+            
+          case 'jungle':
+            if (Math.random() < 0.5) {
+              element = {
+                x, y: H * 0.1 + Math.random() * H * 0.3,
+                size: size * 0.6,
+                type: 'jungle_leaf',
+                speed: 0.1 + Math.random() * 0.2,
+                rotation: Math.random() * Math.PI * 2
+              };
+            } else {
+              element = {
+                x, y, size: size * 0.5,
+                type: 'firefly',
+                speed: 0.15 + Math.random() * 0.25,
+                pulse: Math.random() * Math.PI * 2,
+                brightness: 0.5 + Math.random() * 0.5
+              };
+            }
+            break;
+
+          case 'final':
+            if (Math.random() < 0.5) {
+              element = {
+                x, y, size: size * 0.7,
+                type: 'nebula',
+                speed: 0.05 + Math.random() * 0.1,
+                hue: Math.random() * 360,
+                pulse: Math.random() * Math.PI * 2
+              };
+            } else {
+              element = {
+                x, y, size: size * 0.4,
+                type: 'quantum',
+                speed: 0.1 + Math.random() * 0.2,
+                rotation: Math.random() * Math.PI * 2
+              };
+            }
+            break;
+        }
+        
+        if (element) {
+          backgroundElements.push(element);
+        }
+      }
+    }
+
+    function updateBackgroundElements(dt) {
+      for (let element of backgroundElements) {
+        element.x -= element.speed;
+        if (element.x < -100) {
+          element.x = levels[currentLevel].length + 100;
+          element.y = Math.random() * H * 0.7;
+        }
+        
+        if (element.type === 'bird' || element.type === 'butterfly' || element.type === 'vulture') {
+          element.flap += dt * 10;
+          element.y += Math.sin(element.flap) * 2;
+        }
+        
+        if (element.type === 'leaf' || element.type === 'tumbleweed' || element.type === 'crystal_shard' || element.type === 'jungle_leaf' || element.type === 'quantum') {
+          element.rotation += dt * 2;
+        }
+        
+        if (element.type === 'energy_orb' || element.type === 'fluffy_cloud' || element.type === 'lava_splash' || element.type === 'firefly' || element.type === 'nebula') {
+          element.puff += dt * 3;
+        }
+        
+        if (element.type === 'rainbow' || element.type === 'nebula') {
+          element.hue += dt * 20;
+        }
+      }
+    }
+
+    function renderBackgroundElements() {
+      const L = levels[currentLevel];
+      
+      for (let element of backgroundElements) {
+        const rx = element.x - cameraX;
+        const ry = element.y;
+        
+        if (rx < -100 || rx > W + 100) continue;
+        
+        switch (element.type) {
+          case 'cloud':
+            ctx.fillStyle = 'rgba(255,255,255,0.8)';
+            ctx.beginPath();
+            ctx.arc(rx, ry, element.size, 0, Math.PI * 2);
+            ctx.arc(rx + element.size * 0.6, ry - element.size * 0.3, element.size * 0.7, 0, Math.PI * 2);
+            ctx.arc(rx - element.size * 0.6, ry - element.size * 0.2, element.size * 0.8, 0, Math.PI * 2);
+            ctx.fill();
+            break;
+            
+          case 'bird':
+            ctx.fillStyle = '#333';
+            ctx.save();
+            ctx.translate(rx, ry);
+            ctx.rotate(Math.sin(element.flap) * 0.3);
+            ctx.beginPath();
+            ctx.ellipse(0, 0, element.size, element.size * 0.3, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Wings
+            ctx.fillStyle = '#555';
+            ctx.beginPath();
+            ctx.ellipse(-element.size * 0.5, 0, element.size * 0.8, element.size * 0.2, Math.sin(element.flap) * 0.5, 0, Math.PI * 2);
+            ctx.ellipse(element.size * 0.5, 0, element.size * 0.8, element.size * 0.2, -Math.sin(element.flap) * 0.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            break;
+            
+          case 'butterfly':
+            ctx.fillStyle = `hsl(${Math.sin(element.flap) * 30 + 240}, 70%, 60%)`;
+            ctx.save();
+            ctx.translate(rx, ry);
+            ctx.rotate(Math.sin(element.flap) * 0.2);
+            
+            // Wings
+            ctx.beginPath();
+            ctx.ellipse(-element.size * 0.3, 0, element.size * 0.8, element.size * 0.4, Math.sin(element.flap) * 0.8, 0, Math.PI * 2);
+            ctx.ellipse(element.size * 0.3, 0, element.size * 0.8, element.size * 0.4, -Math.sin(element.flap) * 0.8, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Body
+            ctx.fillStyle = '#333';
+            ctx.beginPath();
+            ctx.ellipse(0, 0, element.size * 0.2, element.size * 0.6, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            break;
+            
+          case 'leaf':
+            ctx.fillStyle = `hsl(120, 60%, ${40 + Math.sin(element.rotation) * 20}%)`;
+            ctx.save();
+            ctx.translate(rx, ry);
+            ctx.rotate(element.rotation);
+            ctx.beginPath();
+            ctx.ellipse(0, 0, element.size, element.size * 0.5, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Leaf veins
+            ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, -element.size * 0.5);
+            ctx.lineTo(0, element.size * 0.5);
+            ctx.moveTo(-element.size * 0.3, -element.size * 0.2);
+            ctx.lineTo(-element.size * 0.6, 0);
+            ctx.moveTo(element.size * 0.3, -element.size * 0.2);
+            ctx.lineTo(element.size * 0.6, 0);
+            ctx.stroke();
+            ctx.restore();
+            break;
+            
+          case 'star':
+            ctx.fillStyle = `rgba(255,255,255,${element.brightness})`;
+            ctx.beginPath();
+            ctx.arc(rx, ry, element.size, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Twinkle effect
+            if (Math.random() < 0.02) {
+              ctx.fillStyle = `rgba(255,255,255,${element.brightness * 0.5})`;
+              ctx.beginPath();
+              ctx.arc(rx, ry, element.size * 2, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            break;
+            
+          case 'tumbleweed':
+            ctx.fillStyle = '#8B4513';
+            ctx.save();
+            ctx.translate(rx, ry);
+            ctx.rotate(element.rotation);
+            ctx.beginPath();
+            ctx.arc(0, 0, element.size, 0, Math.PI * 2);
+            
+            // Tumbleweed texture
+            for (let i = 0; i < 8; i++) {
+              const angle = (i / 8) * Math.PI * 2;
+              const spikeLength = element.size * 0.7;
+              ctx.moveTo(
+                Math.cos(angle) * element.size,
+                Math.sin(angle) * element.size
+              );
+              ctx.lineTo(
+                Math.cos(angle) * (element.size + spikeLength),
+                Math.sin(angle) * (element.size + spikeLength)
+              );
+            }
+            ctx.strokeStyle = '#A0522D';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.restore();
+            break;
+            
+          case 'vulture':
+            ctx.fillStyle = '#333';
+            ctx.save();
+            ctx.translate(rx, ry);
+            
+            // Body
+            ctx.beginPath();
+            ctx.ellipse(0, 0, element.size * 0.4, element.size * 0.2, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Head and neck
+            ctx.fillStyle = '#222';
+            ctx.beginPath();
+            ctx.ellipse(0, -element.size * 0.3, element.size * 0.15, element.size * 0.1, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Wings
+            ctx.fillStyle = '#444';
+            ctx.beginPath();
+            ctx.ellipse(-element.size * 0.2, 0, element.size * 0.6, element.size * 0.1, Math.sin(element.flap) * 0.4, 0, Math.PI * 2);
+            ctx.ellipse(element.size * 0.2, 0, element.size * 0.6, element.size * 0.1, -Math.sin(element.flap) * 0.4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            break;
+            
+          case 'spark':
+            ctx.fillStyle = `hsla(${Math.sin(element.flap) * 60 + 300}, 80%, 60%, ${element.brightness})`;
+            ctx.save();
+            ctx.translate(rx, ry);
+            
+            // Sparkle effect
+            ctx.beginPath();
+            for (let i = 0; i < 4; i++) {
+              const angle = (i / 4) * Math.PI * 2;
+              ctx.moveTo(0, 0);
+              ctx.lineTo(
+                Math.cos(angle) * element.size,
+                Math.sin(angle) * element.size
+              );
+            }
+            ctx.strokeStyle = ctx.fillStyle;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.arc(0, 0, element.size * 0.3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            break;
+            
+          case 'crystal_shard':
+            ctx.fillStyle = `hsla(${element.hue}, 70%, 60%, 0.7)`;
+            ctx.save();
+            ctx.translate(rx, ry);
+            ctx.rotate(element.rotation);
+            
+            // Crystal shape
+            ctx.beginPath();
+            ctx.moveTo(0, -element.size);
+            ctx.lineTo(element.size * 0.6, 0);
+            ctx.lineTo(0, element.size);
+            ctx.lineTo(-element.size * 0.6, 0);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Crystal highlights
+            ctx.strokeStyle = `hsla(${element.hue}, 80%, 80%, 0.8)`;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, -element.size * 0.8);
+            ctx.lineTo(0, element.size * 0.8);
+            ctx.stroke();
+            ctx.restore();
+            break;
+            
+          case 'energy_orb':
+            const pulseSize = element.size * (1 + Math.sin(element.pulse) * 0.2);
+            ctx.fillStyle = `hsla(${Math.sin(element.pulse) * 30 + 200}, 80%, 60%, 0.6)`;
+            ctx.beginPath();
+            ctx.arc(rx, ry, pulseSize, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Energy glow
+            ctx.fillStyle = `hsla(${Math.sin(element.pulse) * 30 + 200}, 80%, 70%, 0.3)`;
+            ctx.beginPath();
+            ctx.arc(rx, ry, pulseSize * 1.5, 0, Math.PI * 2);
+            ctx.fill();
+            break;
+            
+          case 'fluffy_cloud':
+            ctx.fillStyle = 'rgba(255,255,255,0.9)';
+            ctx.save();
+            ctx.translate(rx, ry);
+            
+            // Fluffy cloud with multiple circles
+            ctx.beginPath();
+            ctx.arc(0, 0, element.size, 0, Math.PI * 2);
+            ctx.arc(element.size * 0.6, -element.size * 0.3, element.size * 0.7, 0, Math.PI * 2);
+            ctx.arc(-element.size * 0.5, -element.size * 0.2, element.size * 0.8, 0, Math.PI * 2);
+            ctx.arc(element.size * 0.3, element.size * 0.2, element.size * 0.6, 0, Math.PI * 2);
+            ctx.arc(-element.size * 0.3, element.size * 0.3, element.size * 0.5, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Soft shadow
+            ctx.fillStyle = 'rgba(200,200,255,0.2)';
+            ctx.beginPath();
+            ctx.arc(element.size * 0.2, element.size * 0.1, element.size * 1.1, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            break;
+            
+          case 'rainbow':
+            const rainbowWidth = element.size * 0.3;
+            for (let i = 0; i < 6; i++) {
+              const segmentHue = (element.hue + i * 30) % 360;
+              ctx.strokeStyle = `hsla(${segmentHue}, 80%, 60%, 0.7)`;
+              ctx.lineWidth = rainbowWidth;
+              ctx.beginPath();
+              ctx.arc(rx, ry, element.size + i * rainbowWidth, 0, Math.PI);
+              ctx.stroke();
+            }
+            break;
+            
+          case 'ash':
+            ctx.fillStyle = `rgba(100,100,100,${element.brightness})`;
+            ctx.beginPath();
+            ctx.arc(rx, ry, element.size, 0, Math.PI * 2);
+            ctx.fill();
+            break;
+            
+          case 'lava_splash':
+            const splashSize = element.size * (1 + Math.sin(element.pulse) * 0.3);
+            ctx.fillStyle = `hsla(${20 + Math.sin(element.pulse) * 10}, 90%, 50%, 0.7)`;
+            ctx.beginPath();
+            ctx.arc(rx, ry, splashSize, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Lava glow
+            ctx.fillStyle = `hsla(${20 + Math.sin(element.pulse) * 10}, 90%, 60%, 0.3)`;
+            ctx.beginPath();
+            ctx.arc(rx, ry, splashSize * 1.5, 0, Math.PI * 2);
+            ctx.fill();
+            break;
+            
+          case 'jungle_leaf':
+            ctx.fillStyle = `hsl(${120 + Math.sin(element.rotation) * 20}, 70%, ${30 + Math.sin(element.rotation) * 10}%)`;
+            ctx.save();
+            ctx.translate(rx, ry);
+            ctx.rotate(element.rotation);
+            ctx.beginPath();
+            ctx.ellipse(0, 0, element.size, element.size * 0.7, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Leaf veins
+            ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, -element.size * 0.7);
+            ctx.lineTo(0, element.size * 0.7);
+            ctx.moveTo(-element.size * 0.5, -element.size * 0.3);
+            ctx.lineTo(-element.size * 0.8, 0);
+            ctx.moveTo(element.size * 0.5, -element.size * 0.3);
+            ctx.lineTo(element.size * 0.8, 0);
+            ctx.stroke();
+            ctx.restore();
+            break;
+            
+          case 'firefly':
+            const fireflySize = element.size * (1 + Math.sin(element.pulse) * 0.2);
+            ctx.fillStyle = `hsla(${60 + Math.sin(element.pulse) * 20}, 90%, 60%, ${element.brightness})`;
+            ctx.beginPath();
+            ctx.arc(rx, ry, fireflySize, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Firefly glow
+            ctx.fillStyle = `hsla(${60 + Math.sin(element.pulse) * 20}, 90%, 70%, 0.3)`;
+            ctx.beginPath();
+            ctx.arc(rx, ry, fireflySize * 1.8, 0, Math.PI * 2);
+            ctx.fill();
+            break;
+
+          case 'nebula':
+            const nebulaSize = element.size * (1 + Math.sin(element.pulse) * 0.3);
+            ctx.fillStyle = `hsla(${element.hue}, 70%, 50%, 0.4)`;
+            ctx.beginPath();
+            ctx.arc(rx, ry, nebulaSize, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Nebula glow
+            ctx.fillStyle = `hsla(${element.hue}, 80%, 60%, 0.2)`;
+            ctx.beginPath();
+            ctx.arc(rx, ry, nebulaSize * 1.8, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Nebula core
+            ctx.fillStyle = `hsla(${element.hue}, 90%, 70%, 0.6)`;
+            ctx.beginPath();
+            ctx.arc(rx, ry, nebulaSize * 0.4, 0, Math.PI * 2);
+            ctx.fill();
+            break;
+            
+          case 'quantum':
+            ctx.fillStyle = `hsla(${element.rotation * 30}, 80%, 60%, 0.7)`;
+            ctx.save();
+            ctx.translate(rx, ry);
+            ctx.rotate(element.rotation);
+            
+            // Quantum particle with multiple rings
+            for (let i = 0; i < 3; i++) {
+              const ringSize = element.size * (0.3 + i * 0.3);
+              ctx.beginPath();
+              ctx.arc(0, 0, ringSize, 0, Math.PI * 2);
+              ctx.strokeStyle = `hsla(${element.rotation * 30 + i * 60}, 80%, 60%, 0.4)`;
+              ctx.lineWidth = 2;
+              ctx.stroke();
+            }
+            
+            // Central particle
+            ctx.fillStyle = `hsla(${element.rotation * 30}, 90%, 70%, 0.8)`;
+            ctx.beginPath();
+            ctx.arc(0, 0, element.size * 0.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            break;
+        }
+      }
+    }
+
+    // Trap generation and management
+    function generateTrapsForLevel(levelIdx) {
+      traps = [];
+      const L = levels[levelIdx];
+      
+      // Не генерируем ловушки для уровня с боссом (уровень 4 в массиве)
+      if (levelIdx === 4) return;
+      
+      // Generate traps based on level theme
+      for (let i = 0; i < platforms.length; i++) {
+        const platform = platforms[i];
+        const trapChance = 0.15; // 15% chance per platform
+        
+        if (Math.random() < trapChance) {
+          let trap;
+          const x = platform.x + Math.random() * (platform.w - 40);
+          const y = platform.y - 20;
+          
+          switch (L.theme) {
+            case 'city':
+              trap = {
+                x: x,
+                y: y,
+                w: 30,
+                h: 20,
+                type: 'spikes',
+                damage: 20,
+                timer: 0,
+                active: true
+              };
+              break;
+              
+            case 'forest':
+              if (Math.random() < 0.5) {
+                trap = {
+                  x: x,
+                  y: y,
+                  w: 40,
+                  h: 40,
+                  type: 'thorn_bush',
+                  damage: 15,
+                  timer: 0,
+                  active: true
+                };
+              } else {
+                trap = {
+                  x: x,
+                  y: y - 60,
+                  w: 60,
+                  h: 60,
+                  type: 'falling_log',
+                  damage: 25,
+                  timer: 0,
+                  active: false,
+                  vy: 0,
+                  falling: false
+                };
+              }
+              break;
+              
+            case 'space':
+              trap = {
+                x: x,
+                y: y,
+                w: 35,
+                h: 35,
+                type: 'laser_turret',
+                damage: 20,
+                timer: 0,
+                active: true,
+                laserActive: false,
+                laserTimer: 0
+              };
+              break;
+              
+            case 'desert':
+              trap = {
+                x: x,
+                y: y,
+                w: 50,
+                h: 30,
+                type: 'quicksand',
+                damage: 10,
+                timer: 0,
+                active: true,
+                slowEffect: 0.5
+              };
+              break;
+              
+            case 'crystal':
+              trap = {
+                x: x,
+                y: y,
+                w: 40,
+                h: 40,
+                type: 'crystal_spikes',
+                damage: 20,
+                timer: 0,
+                active: true,
+                pulse: Math.random() * Math.PI * 2
+              };
+              break;
+              
+            case 'cloud':
+              trap = {
+                x: x,
+                y: y - 100,
+                w: 60,
+                h: 20,
+                type: 'lightning',
+                damage: 25,
+                timer: 0,
+                active: false,
+                strikeTimer: 0,
+                striking: false
+              };
+              break;
+              
+            case 'volcano':
+              trap = {
+                x: x,
+                y: y,
+                w: 40,
+                h: 40,
+                type: 'fire_geyser',
+                damage: 20,
+                timer: 0,
+                active: false,
+                eruptionTimer: 0,
+                erupting: false
+              };
+              break;
+              
+            case 'jungle':
+              if (Math.random() < 0.6) {
+                trap = {
+                  x: x,
+                  y: y,
+                  w: 50,
+                  h: 30,
+                  type: 'poison_plant',
+                  damage: 15,
+                  timer: 0,
+                  active: true,
+                  poisonTimer: 0,
+                  poisonActive: false
+                };
+              } else {
+                trap = {
+                  x: x,
+                  y: y - 80,
+                  w: 40,
+                  h: 80,
+                  type: 'swinging_spikes',
+                  damage: 20,
+                  timer: 0,
+                  active: true,
+                  swing: Math.random() * Math.PI * 2,
+                  swingSpeed: 1 + Math.random() * 2
+                };
+              }
+              break;
+
+            case 'final':
+              if (Math.random() < 0.5) {
+                trap = {
+                  x: x,
+                  y: y,
+                  w: 50,
+                  h: 50,
+                  type: 'energy_vortex',
+                  damage: 25,
+                  timer: 0,
+                  active: true,
+                  rotation: Math.random() * Math.PI * 2
+                };
+              } else {
+                trap = {
+                  x: x,
+                  y: y - 60,
+                  w: 40,
+                  h: 40,
+                  type: 'quantum_instability',
+                  damage: 30,
+                  timer: 0,
+                  active: false,
+                  instabilityTimer: 0,
+                  unstable: false
+                };
+              }
+              break;
+          }
+          
+          if (trap) {
+            traps.push(trap);
+          }
+        }
+      }
+    }
+
+    function updateTraps(dt) {
+      for (let trap of traps) {
+        trap.timer += dt;
+        
+        switch (trap.type) {
+          case 'spikes':
+            // Simple static spikes - no special behavior
+            break;
+            
+          case 'thorn_bush':
+            // Thorn bushes sway slightly
+            trap.timer += dt;
+            break;
+            
+          case 'falling_log':
+            // Falling logs activate when player is near
+            const dx = Math.abs((player.x + player.w/2) - (trap.x + trap.w/2));
+            if (!trap.falling && dx < 200) {
+              trap.active = true;
+              trap.falling = true;
+            }
+            
+            if (trap.falling) {
+              trap.vy += GRAV * dt;
+              trap.y += trap.vy * dt;
+              
+              // Check if log landed on platform
+              for (let p of platforms) {
+                if (trap.x + trap.w > p.x && trap.x < p.x + p.w && 
+                    trap.y + trap.h > p.y && trap.y < p.y) {
+                  trap.y = p.y - trap.h;
+                  trap.vy = 0;
+                }
+              }
+            }
+            break;
+            
+          case 'laser_turret':
+            // Laser turrets periodically fire
+            trap.laserTimer += dt;
+            if (trap.laserTimer > 2) {
+              trap.laserActive = true;
+              if (trap.laserTimer > 2.3) {
+                trap.laserActive = false;
+                trap.laserTimer = 0;
+              }
+            }
+            break;
+            
+          case 'quicksand':
+            // Quicksand slowly damages player
+            break;
+            
+          case 'crystal_spikes':
+            // Crystal spikes pulse
+            trap.pulse += dt * 3;
+            break;
+            
+          case 'lightning':
+            // Lightning strikes periodically
+            trap.strikeTimer += dt;
+            if (trap.strikeTimer > 3) {
+              trap.active = true;
+              trap.striking = true;
+              if (trap.strikeTimer > 3.2) {
+                trap.active = false;
+                trap.striking = false;
+                trap.strikeTimer = 0;
+              }
+            }
+            break;
+            
+          case 'fire_geyser':
+            // Fire geysers erupt periodically
+            trap.eruptionTimer += dt;
+            if (trap.eruptionTimer > 4) {
+              trap.active = true;
+              trap.erupting = true;
+              if (trap.eruptionTimer > 4.5) {
+                trap.active = false;
+                trap.erupting = false;
+                trap.eruptionTimer = 0;
+              }
+            }
+            break;
+            
+          case 'poison_plant':
+            // Poison plants periodically release poison clouds
+            trap.poisonTimer += dt;
+            if (trap.poisonTimer > 2) {
+              trap.poisonActive = true;
+              if (trap.poisonTimer > 2.5) {
+                trap.poisonActive = false;
+                trap.poisonTimer = 0;
+              }
+            }
+            break;
+            
+          case 'swinging_spikes':
+            // Swinging spikes pendulum motion
+            trap.swing += dt * trap.swingSpeed;
+            break;
+
+          case 'energy_vortex':
+            // Energy vortex rotates and pulses
+            trap.rotation += dt * 3;
+            break;
+            
+          case 'quantum_instability':
+            // Quantum instabilities appear randomly
+            trap.instabilityTimer += dt;
+            if (trap.instabilityTimer > 4) {
+              trap.active = true;
+              trap.unstable = true;
+              if (trap.instabilityTimer > 4.5) {
+                trap.active = false;
+                trap.unstable = false;
+                trap.instabilityTimer = 0;
+              }
+            }
+            break;
+        }
+        
+        // Check collision with player
+        if (trap.active) {
+          const trapLeft = trap.x, trapRight = trap.x + trap.w, trapTop = trap.y, trapBottom = trap.y + trap.h;
+          const pLeft = player.x, pRight = player.x + player.w, pTop = player.y, pBottom = player.y + player.h;
+          
+          const overlapX = pRight > trapLeft && pLeft < trapRight;
+          const overlapY = pBottom > trapTop && pTop < trapBottom;
+          
+          if (overlapX && overlapY && player.invulnerable <= 0) {
+            player.health -= trap.damage;
+            player.invulnerable = 1.0;
+            player.vy = -300;
+            if (soundOn) playBeep(220, 0.1);
+            showDamage();
+            updatePlayerHealth();
+          }
+        }
+      }
+      
+      // Clean up old traps
+      traps = traps.filter(trap => trap.x + trap.w > cameraX - 600);
+    }
+
+    function renderTraps() {
+      for (let trap of traps) {
+        const rx = Math.round(trap.x - cameraX);
+        const ry = Math.round(trap.y);
+        
+        if (rx < -trap.w || rx > W) continue;
+        
+        if (!trap.active && (trap.type === 'lightning' || trap.type === 'fire_geyser' || trap.type === 'quantum_instability')) {
+          continue;
+        }
+        
+        switch (trap.type) {
+          case 'spikes':
+            ctx.fillStyle = '#666';
+            // Draw spikes as triangles
+            const spikeCount = Math.floor(trap.w / 10);
+            for (let i = 0; i < spikeCount; i++) {
+              ctx.beginPath();
+              ctx.moveTo(rx + i * 10, ry + trap.h);
+              ctx.lineTo(rx + i * 10 + 5, ry);
+              ctx.lineTo(rx + i * 10 + 10, ry + trap.h);
+              ctx.closePath();
+              ctx.fill();
+            }
+            break;
+            
+          case 'thorn_bush':
+            ctx.fillStyle = '#2d5a2d';
+            ctx.beginPath();
+            ctx.arc(rx + trap.w/2, ry + trap.h/2, trap.w/2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Thorns
+            ctx.fillStyle = '#1a3a1a';
+            for (let i = 0; i < 8; i++) {
+              const angle = (i / 8) * Math.PI * 2;
+              const spikeLength = trap.w/3;
+              ctx.beginPath();
+              ctx.moveTo(
+                rx + trap.w/2 + Math.cos(angle) * trap.w/2,
+                ry + trap.h/2 + Math.sin(angle) * trap.h/2
+              );
+              ctx.lineTo(
+                rx + trap.w/2 + Math.cos(angle) * (trap.w/2 + spikeLength),
+                ry + trap.h/2 + Math.sin(angle) * (trap.h/2 + spikeLength)
+              );
+              ctx.lineTo(
+                rx + trap.w/2 + Math.cos(angle + Math.PI/8) * trap.w/2,
+                ry + trap.h/2 + Math.sin(angle + Math.PI/8) * trap.h/2
+              );
+              ctx.closePath();
+              ctx.fill();
+            }
+            break;
+            
+          case 'falling_log':
+            ctx.fillStyle = '#8B4513';
+            ctx.fillRect(rx, ry, trap.w, trap.h);
+            
+            // Log texture
+            ctx.fillStyle = '#A0522D';
+            for (let i = 0; i < trap.w; i += 8) {
+              ctx.fillRect(rx + i, ry, 4, trap.h);
+            }
+            
+            // Highlight
+            ctx.fillStyle = 'rgba(255,255,255,0.2)';
+            ctx.fillRect(rx, ry, trap.w, 5);
+            break;
+            
+          case 'laser_turret':
+            ctx.fillStyle = '#444';
+            ctx.fillRect(rx, ry, trap.w, trap.h);
+            
+            // Laser emitter
+            ctx.fillStyle = '#888';
+            ctx.fillRect(rx + 5, ry + 5, trap.w - 10, trap.h - 10);
+            
+            // Active laser
+            if (trap.laserActive) {
+              ctx.fillStyle = '#ff0000';
+              ctx.fillRect(rx + trap.w/2 - 2, ry - 100, 4, 100);
+              
+              // Laser glow
+              ctx.fillStyle = 'rgba(255,0,0,0.3)';
+              ctx.fillRect(rx + trap.w/2 - 10, ry - 100, 20, 100);
+            }
+            break;
+            
+          case 'quicksand':
+            ctx.fillStyle = '#d2b48c';
+            ctx.fillRect(rx, ry, trap.w, trap.h);
+            
+            // Quicksand animation
+            ctx.fillStyle = '#a0522d';
+            for (let i = 0; i < trap.w; i += 15) {
+              const sink = Math.sin(trap.timer * 2 + i) * 3;
+              ctx.fillRect(rx + i, ry + sink, 10, trap.h - sink);
+            }
+            break;
+            
+          case 'crystal_spikes':
+            const pulse = 0.7 + Math.sin(trap.pulse) * 0.3;
+            ctx.fillStyle = `hsla(240, 80%, 60%, ${pulse})`;
+            
+            // Crystal spikes
+            for (let i = 0; i < 3; i++) {
+              ctx.beginPath();
+              ctx.moveTo(rx + i * 15 + 5, ry + trap.h);
+              ctx.lineTo(rx + i * 15 + 15, ry);
+              ctx.lineTo(rx + i * 15 + 25, ry + trap.h);
+              ctx.closePath();
+              ctx.fill();
+            }
+            break;
+            
+          case 'lightning':
+            if (trap.striking) {
+              ctx.fillStyle = '#ffff00';
+              ctx.fillRect(rx, ry, trap.w, trap.h + 100);
+              
+              // Lightning branches
+              ctx.beginPath();
+              ctx.moveTo(rx + 10, ry);
+              ctx.lineTo(rx - 10, ry + 30);
+              ctx.lineTo(rx + 20, ry + 50);
+              ctx.lineTo(rx, ry + 80);
+              ctx.lineTo(rx + 30, ry + 100);
+              ctx.strokeStyle = '#ffff00';
+              ctx.lineWidth = 3;
+              ctx.stroke();
+            }
+            break;
+            
+          case 'fire_geyser':
+            if (trap.erupting) {
+              // Fire effect
+              const gradient = ctx.createLinearGradient(rx, ry, rx, ry - 100);
+              gradient.addColorStop(0, '#ff3300');
+              gradient.addColorStop(0.5, '#ff6600');
+              gradient.addColorStop(1, 'transparent');
+              
+              ctx.fillStyle = gradient;
+              ctx.fillRect(rx, ry - 100, trap.w, 100);
+              
+              // Fire particles
+              ctx.fillStyle = '#ffff00';
+              for (let i = 0; i < 10; i++) {
+                const px = rx + Math.random() * trap.w;
+                const py = ry - Math.random() * 100;
+                ctx.beginPath();
+                ctx.arc(px, py, 2 + Math.random() * 3, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            }
+            
+            // Geyser base
+            ctx.fillStyle = '#552200';
+            ctx.fillRect(rx, ry, trap.w, trap.h);
+            break;
+            
+          case 'poison_plant':
+            ctx.fillStyle = '#3a7a3a';
+            ctx.beginPath();
+            ctx.arc(rx + trap.w/2, ry + trap.h/2, trap.w/2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Poison cloud
+            if (trap.poisonActive) {
+              ctx.fillStyle = 'rgba(100,255,100,0.5)';
+              ctx.beginPath();
+              ctx.arc(rx + trap.w/2, ry - 20, 40, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            break;
+            
+          case 'swinging_spikes':
+            const swingX = rx + trap.w/2 + Math.sin(trap.swing) * 50;
+            const swingY = ry + trap.h/2;
+            
+            // Chain
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(rx + trap.w/2, ry);
+            ctx.lineTo(swingX, swingY);
+            ctx.stroke();
+            
+            // Spikes ball
+            ctx.fillStyle = '#444';
+            ctx.beginPath();
+            ctx.arc(swingX, swingY, trap.w/2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Spikes
+            ctx.fillStyle = '#666';
+            for (let i = 0; i < 6; i++) {
+              const angle = (i / 6) * Math.PI * 2;
+              ctx.beginPath();
+              ctx.moveTo(
+                swingX + Math.cos(angle) * trap.w/2,
+                swingY + Math.sin(angle) * trap.w/2
+              );
+              ctx.lineTo(
+                swingX + Math.cos(angle) * (trap.w/2 + 15),
+                swingY + Math.sin(angle) * (trap.w/2 + 15)
+              );
+              ctx.lineTo(
+                swingX + Math.cos(angle + Math.PI/6) * trap.w/2,
+                swingY + Math.sin(angle + Math.PI/6) * trap.w/2
+              );
+              ctx.closePath();
+              ctx.fill();
+            }
+            break;
+
+          case 'energy_vortex':
+            ctx.save();
+            ctx.translate(rx + trap.w/2, ry + trap.h/2);
+            ctx.rotate(trap.rotation);
+            
+            // Vortex energy
+            const vortexGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, trap.w/2);
+            vortexGradient.addColorStop(0, '#00ffff');
+            vortexGradient.addColorStop(0.7, '#0088ff');
+            vortexGradient.addColorStop(1, '#0000ff');
+            
+            ctx.fillStyle = vortexGradient;
+            ctx.beginPath();
+            ctx.arc(0, 0, trap.w/2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Vortex spiral
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 3; i++) {
+              ctx.beginPath();
+              ctx.arc(0, 0, trap.w/2 * (0.3 + i * 0.2), 0, Math.PI * 2);
+              ctx.stroke();
+            }
+            ctx.restore();
+            break;
+            
+          case 'quantum_instability':
+            if (trap.unstable) {
+              ctx.save();
+              ctx.translate(rx + trap.w/2, ry + trap.h/2);
+              
+              // Quantum instability effect
+              const instabilityGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, trap.w/2);
+              instabilityGradient.addColorStop(0, '#ff00ff');
+              instabilityGradient.addColorStop(0.5, '#8800ff');
+              instabilityGradient.addColorStop(1, '#0000ff');
+              
+              ctx.fillStyle = instabilityGradient;
+              ctx.beginPath();
+              ctx.arc(0, 0, trap.w/2, 0, Math.PI * 2);
+              ctx.fill();
+              
+              // Quantum particles
+              ctx.fillStyle = '#ffffff';
+              for (let i = 0; i < 8; i++) {
+                const angle = (i / 8) * Math.PI * 2 + trap.instabilityTimer * 5;
+                const distance = trap.w/3;
+                ctx.beginPath();
+                ctx.arc(
+                  Math.cos(angle) * distance,
+                  Math.sin(angle) * distance,
+                  3, 0, Math.PI * 2
+                );
+                ctx.fill();
+              }
+              ctx.restore();
+            }
+            break;
+        }
+      }
+    }
+
+    function onCenterAction(){ 
+      if(levelComplete){ 
+        if(currentLevel < levels.length-1){ 
+          currentLevel++; 
+          startLevel(currentLevel); 
+          return; 
+        } else { 
+          currentLevel = 0; 
+          startLevel(0); 
+          return; 
+        } 
+      } 
+      resetLevel(currentLevel); 
+    }
+
+    function resize(){ W = window.innerWidth; H = window.innerHeight; canvas.width = W; canvas.height = H; }
+    window.addEventListener('resize', resize);
+
+    function rnd(a,b){ return Math.random()*(b-a)+a; }
+
+    // Seed level with themed obstacles
+    function seedPlatformsForLevel(levelIdx){
+      const L = levels[levelIdx]; platforms=[]; stars=[]; obstacles=[]; lastPlatformX = -220; let x = -220;
+      lavaPools = [];
+      eruptions = [];
+      jungleVines = [];
+      finalPortals = [];
+      energyFields = [];
+      traps = [];
+      
+      if (L.theme === 'boss') {
+        // Упрощенная и укороченная структура платформ для уровня с боссом
+        platforms.push({ x: -200, y: H*0.7, w: 400 });
+        platforms.push({ x: 300, y: H*0.6, w: 300 });
+        platforms.push({ x: 700, y: H*0.5, w: 250 });
+        platforms.push({ x: 1050, y: H*0.6, w: 200 });
+        platforms.push({ x: 1350, y: H*0.65, w: 500 }); // Увеличена платформа босса для большего босса
+        lastPlatformX = 1850;
+        
+        // НЕ генерируем ловушки для уровня с боссом
+        return;
+      }
+      
+      // Special platform layout for final boss level
+      if (L.theme === 'final' && L.hasBoss) {
+        platforms.push({ x: -200, y: H*0.7, w: 400 });
+        platforms.push({ x: 300, y: H*0.6, w: 300 });
+        platforms.push({ x: 700, y: H*0.5, w: 250 });
+        platforms.push({ x: 1050, y: H*0.6, w: 200 });
+        platforms.push({ x: 1350, y: H*0.7, w: 350 });
+        platforms.push({ x: 1800, y: H*0.65, w: 400 });
+        platforms.push({ x: 2300, y: H*0.55, w: 300 });
+        platforms.push({ x: 2800, y: H*0.6, w: 350 });
+        platforms.push({ x: 3300, y: H*0.5, w: 400 });
+        platforms.push({ x: 3800, y: H*0.65, w: 450 }); // Final boss platform
+        platforms.push({ x: 4400, y: H*0.55, w: 400 });
+        lastPlatformX = 4800;
+        
+        // Generate traps for final boss level
+        generateTrapsForLevel(levelIdx);
+        return;
+      }
+      
+      while(x < L.length + 500){
+        const w = rnd(L.minW, L.maxW); const gap = rnd(L.minGap, L.maxGap); const y = rnd(H * L.minYRatio, H * L.maxYRatio);
+        platforms.push({ x, y, w });
+        if(Math.random() < 0.75) stars.push({ x: x + w/2 + rnd(-w/4,w/4), y: y - 60, taken:false });
+
+        // place themed obstacles - сохранены все препятствия с их размерами
+        if(Math.random() < 0.5 && L.theme !== 'boss'){
+          if(L.theme === 'city'){
+            const r = Math.random();
+            if(r < 0.5){
+              // Дома - сохранены размеры
+              const ow = Math.min(w-20, rnd(80, Math.min(280, w*0.9))); 
+              const oh = rnd(120,200); 
+              const ox = x + rnd(10, Math.max(10, w - ow - 10)); 
+              const oy = y - oh; 
+              obstacles.push({ x:ox, y:oy, w:ow, h:oh, type:'house' });
+            } else {
+              // Фонари - сохранены размеры
+              const ow = rnd(40,80); 
+              const oh = rnd(80,140); 
+              const ox = x + rnd(10, Math.max(10, w - ow - 10)); 
+              const oy = y - oh; 
+              obstacles.push({ x:ox, y:oy, w:ow, h:oh, type:'lamp' });
+            }
+          } else if(L.theme === 'forest'){
+            const r = Math.random();
+            if(r < 0.6){ 
+              // Деревья - сохранены размеры
+              const ow = Math.min(w-20, rnd(70, Math.min(220, w*0.85))); 
+              const oh = rnd(120,180); 
+              const ox = x + rnd(10, Math.max(10, w - ow - 10)); 
+              const oy = y - oh; 
+              obstacles.push({ x:ox, y:oy, w:ow, h:oh, type:'tree' }); 
+            } else { 
+              // Кусты - сохранены размеры
+              const ow = rnd(50,120); 
+              const oh = rnd(50,100); 
+              const ox = x + rnd(10, Math.max(10, w - ow - 10)); 
+              const oy = y - oh; 
+              obstacles.push({ x:ox, y:oy, w:ow, h:oh, type:'bush' }); 
+            }
+          } else if(L.theme === 'space'){
+            const r = Math.random();
+            if(r < 0.6){
+              const ow = rnd(40,100); const oh = rnd(40,100);
+              const ox = x + rnd(10, Math.max(10, w - ow - 10)); const oy = y - oh; obstacles.push({ x:ox, y:oy, w:ow, h:oh, type:'asteroid' });
+            } else {
+              const ow = rnd(60,140); const oh = rnd(60,140);
+              const ox = x + rnd(10, Math.max(10, w - ow - 10)); const oy = y - oh; obstacles.push({ x:ox, y:oy, w:ow, h:oh, type:'planet' });
+            }
+          } else if(L.theme === 'desert'){
+            const r = Math.random();
+            if(r < 0.7){
+              const ow = rnd(30,70); const oh = rnd(50,120);
+              const ox = x + rnd(10, Math.max(10, w - ow - 10)); const oy = y - oh; obstacles.push({ x:ox, y:oy, w:ow, h:oh, type:'cactus' });
+            } else {
+              const ow = rnd(80,180); const oh = rnd(60,140);
+              const ox = x + rnd(10, Math.max(10, w - ow - 10)); const oy = y - oh; obstacles.push({ x:ox, y:oy, w:ow, h:oh, type:'pyramid' });
+            }
+          } else if(L.theme === 'crystal'){
+            const r = Math.random();
+            if(r < 0.6){
+              const ow = rnd(40,100); const oh = rnd(60,140);
+              const ox = x + rnd(10, Math.max(10, w - ow - 10)); const oy = y - oh; obstacles.push({ x:ox, y:oy, w:ow, h:oh, type:'crystal' });
+            } else {
+              const ow = rnd(50,120); const oh = rnd(40,100);
+              const ox = x + rnd(10, Math.max(10, w - ow - 10)); const oy = y - oh; obstacles.push({ x:ox, y:oy, w:ow, h:oh, type:'geode' });
+            }
+          } else if(L.theme === 'cloud'){
+            const r = Math.random();
+            if(r < 0.6){
+              const ow = rnd(60,160); const oh = rnd(40,100);
+              const ox = x + rnd(10, Math.max(10, w - ow - 10)); const oy = y - oh; obstacles.push({ x:ox, y:oy, w:ow, h:oh, type:'cloud' });
+            } else {
+              const ow = rnd(40,120); const oh = rnd(60,140);
+              const ox = x + rnd(10, Math.max(10, w - ow - 10)); const oy = y - oh; obstacles.push({ x:ox, y:oy, w:ow, h:oh, type:'airship' });
+            }
+          } else if(L.theme === 'volcano'){
+            const r = Math.random();
+            if(r < 0.6){
+              const ow = rnd(60,180); const oh = rnd(80,160);
+              const ox = x + rnd(10, Math.max(10, w - ow - 10)); const oy = y - oh; obstacles.push({ x:ox, y:oy, w:ow, h:oh, type:'volcano' });
+            } else {
+              const ow = rnd(40,100); const oh = rnd(40,100);
+              const ox = x + rnd(10, Math.max(10, w - ow - 10)); const oy = y - oh; obstacles.push({ x:ox, y:oy, w:ow, h:oh, type:'rock' });
+            }
+            
+            // Add lava pools for volcano level
+            if(Math.random() < 0.3) {
+              const lw = rnd(80, 200);
+              const lx = x + rnd(0, w - lw);
+              lavaPools.push({ x: lx, y: y + 20, w: lw, h: 40, timer: 0 });
+            }
+          } else if(L.theme === 'jungle'){
+            const r = Math.random();
+            if(r < 0.6){
+              const ow = rnd(50,150); const oh = rnd(80,180);
+              const ox = x + rnd(10, Math.max(10, w - ow - 10)); const oy = y - oh; obstacles.push({ x:ox, y:oy, w:ow, h:oh, type:'tree' });
+            } else {
+              const ow = rnd(30,80); const oh = rnd(40,100);
+              const ox = x + rnd(10, Math.max(10, w - ow - 10)); const oy = y - oh; obstacles.push({ x:ox, y:oy, w:ow, h:oh, type:'vine' });
+            }
+            
+            // Add jungle vines
+            if(Math.random() < 0.4) {
+              const vw = 20;
+              const vh = rnd(100, 200);
+              const vx = x + rnd(10, w - 30);
+              jungleVines.push({ x: vx, y: y - vh, w: vw, h: vh, swing: Math.random() * Math.PI * 2 });
+            }
+          } else if(L.theme === 'final'){
+            const r = Math.random();
+            if(r < 0.6){
+              const ow = rnd(80,200); const oh = rnd(100,180);
+              const ox = x + rnd(10, Math.max(10, w - ow - 10)); const oy = y - oh; obstacles.push({ x:ox, y:oy, w:ow, h:oh, type:'portal' });
+            } else {
+              const ow = rnd(60,140); const oh = rnd(80,160);
+              const ox = x + rnd(10, Math.max(10, w - ow - 10)); const oy = y - oh; obstacles.push({ x:ox, y:oy, w:ow, h:oh, type:'monolith' });
+            }
+            
+            // Add energy fields for final level
+            if(Math.random() < 0.3) {
+              const efw = rnd(100, 200);
+              const efx = x + rnd(0, w - efw);
+              energyFields.push({ x: efx, y: y + 20, w: efw, h: 40, timer: 0 });
+            }
+          }
+        }
+
+        x += w + gap; lastPlatformX = x; if(x > L.length + 800) break;
+      }
+      
+      // Generate traps for the level
+      generateTrapsForLevel(levelIdx);
+    }
+
+    function startLevel(i){ 
+      const L = levels[i]; 
+      GRAV=L.grav; JUMP_V=L.jump; 
+      player.x=120; player.y=H*0.6; player.vx=0; player.vy=0; player.jumps=0; player.onGround=false; player.facing=1; player.health = 100; player.invulnerable = 0; player.hits = 0;
+      cameraX=0; score=0; running=true; levelComplete=false; 
+      last=performance.now(); 
+      seedPlatformsForLevel(i); 
+      generateBackgroundElements(L.theme);
+      
+      // Initialize boss for level 5 and final boss for level 10
+      if (i === 4) {
+        initBoss();
+      } else if (i === 9) {
+        initFinalBoss();
+      } else {
+        bossHealth.style.display = 'none';
+        bossName.style.display = 'none';
+      }
+      
+      playLevelMusic(i);
+      hideCenterButton(); 
+      updateLevelUI(); 
+      updatePlayerHealth();
+      requestAnimationFrame(loop); 
+    }
+    
+    function resetLevel(i){ startLevel(i); }
+    
+    function updateLevelUI(){ document.getElementById('levelText').innerText = `Уровень: ${currentLevel+1} / ${levels.length} — ${levels[currentLevel].name}`; }
+    
+    function showCenterButton(t){ centerBtn.innerText = t; centerBtn.style.display='block'; }
+    
+    function hideCenterButton(){ centerBtn.style.display='none'; }
+
+    function doJump(){ if(player.jumps < player.maxJumps && running){ player.vy = JUMP_V; player.jumps += 1; if(soundOn) playBeep(880,0.06); } }
+
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playBeep(freq,dur){ try{ const o=audioCtx.createOscillator(); const g=audioCtx.createGain(); o.frequency.value=freq; o.type='sine'; o.connect(g); g.connect(audioCtx.destination); g.gain.value=0.0001; g.gain.exponentialRampToValueAtTime(0.08,audioCtx.currentTime+0.01); o.start(); g.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+dur+0.02); o.stop(audioCtx.currentTime+dur+0.02);}catch(e){} }
+
+    function showDamage() {
+      damageIndicator.style.opacity = 0.7;
+      setTimeout(() => {
+        damageIndicator.style.opacity = 0;
+      }, 300);
+    }
+    
+    function updateLava(dt) {
+      lavaTimer += dt;
+      
+      // Update lava pools animation
+      for (let pool of lavaPools) {
+        pool.timer += dt;
+      }
+      
+      // Create new lava pools occasionally
+      if (lavaTimer > 5) {
+        lavaTimer = 0;
+        if (Math.random() < 0.7 && lavaPools.length < 10) {
+          const platform = platforms[Math.floor(Math.random() * platforms.length)];
+          if (platform && platform.x > cameraX && platform.x < cameraX + W + 500) {
+            const lw = rnd(80, 200);
+            const lx = platform.x + rnd(0, platform.w - lw);
+            lavaPools.push({ x: lx, y: platform.y + 20, w: lw, h: 40, timer: 0 });
+          }
+        }
+      }
+    }
+    
+    function updateEruptions(dt) {
+      eruptionTimer += dt;
+      
+      // Update existing eruptions
+      for (let i = eruptions.length - 1; i >= 0; i--) {
+        const eruption = eruptions[i];
+        eruption.timer += dt;
+        eruption.y -= eruption.vy * dt;
+        
+        // Remove eruptions that are off screen or have expired
+        if (eruption.y < -50 || eruption.timer > 3) {
+          eruptions.splice(i, 1);
+        }
+      }
+      
+      // Create new eruptions occasionally
+      if (eruptionTimer > 4) {
+        eruptionTimer = 0;
+        if (Math.random() < 0.6) {
+          const x = cameraX + W + 100;
+          const y = H * 0.8;
+          eruptions.push({
+            x: x,
+            y: y,
+            vx: -100 - Math.random() * 200,
+            vy: 200 + Math.random() * 300,
+            size: 20 + Math.random() * 30,
+            timer: 0
+          });
+        }
+      }
+    }
+    
+    function updateJungle(dt) {
+      jungleTimer += dt;
+      
+      // Update jungle vines swinging
+      for (let vine of jungleVines) {
+        vine.swing += dt * 2;
+      }
+      
+      // Create new vines occasionally
+      if (jungleTimer > 6) {
+        jungleTimer = 0;
+        if (Math.random() < 0.5 && jungleVines.length < 8) {
+          const platform = platforms[Math.floor(Math.random() * platforms.length)];
+          if (platform && platform.x > cameraX && platform.x < cameraX + W + 500) {
+            const vw = 20;
+            const vh = rnd(100, 200);
+            const vx = platform.x + rnd(10, platform.w - 30);
+            jungleVines.push({ x: vx, y: platform.y - vh, w: vw, h: vh, swing: Math.random() * Math.PI * 2 });
+          }
+        }
+      }
+    }
+
+    function updateFinal(dt) {
+      finalTimer += dt;
+      
+      // Update energy fields animation
+      for (let field of energyFields) {
+        field.timer += dt;
+      }
+      
+      // Create new energy fields occasionally
+      if (finalTimer > 6) {
+        finalTimer = 0;
+        if (Math.random() < 0.5 && energyFields.length < 8) {
+          const platform = platforms[Math.floor(Math.random() * platforms.length)];
+          if (platform && platform.x > cameraX && platform.x < cameraX + W + 500) {
+            const efw = rnd(100, 200);
+            const efx = platform.x + rnd(0, platform.w - efw);
+            energyFields.push({ x: efx, y: platform.y + 20, w: efw, h: 40, timer: 0 });
+          }
+        }
+      }
+    }
+
+    // main loop
+    function loop(now){ 
+      const dt=Math.min(0.04,(now-last)/1000); 
+      last=now; 
+      update(dt); 
+      render(dt); 
+      if(running) requestAnimationFrame(loop); 
+    }
+
+    function update(dt){ 
+      const L = levels[currentLevel]; 
+      let acc=0; 
+      const left = keys.ArrowLeft||keys.KeyA; 
+      const right = keys.ArrowRight||keys.KeyD; 
+      if(left) acc -= MOVE_ACCEL; 
+      if(right) acc += MOVE_ACCEL; 
+      if(!left && !right) player.vx = 0; 
+      else { player.vx += acc*dt; player.vx *= 0.92; } 
+      if(player.vx>0) player.facing=1; else if(player.vx<0) player.facing=-1; 
+      if((keys.Space||keys.ArrowUp||keys.KeyW) && !keys._jumpUsed){ doJump(); keys._jumpUsed=true; } 
+      if(!(keys.Space||keys.ArrowUp||keys.KeyW)) keys._jumpUsed=false; 
+      if(Math.abs(player.vx)<0.5) player.vx=0; 
+      const maxStep=1/120; 
+      const steps=Math.max(1,Math.ceil(dt/maxStep)); 
+      const subDt=dt/steps; 
+      for(let i=0;i<steps;i++) updateSub(subDt);
+
+      // Update background elements
+      updateBackgroundElements(dt);
+
+      // Update boss for level 5 and final boss for level 10
+      if (currentLevel === 4) {
+        updateBoss(dt);
+      } else if (currentLevel === 9) {
+        updateFinalBoss(dt);
+      }
+      
+      // Update traps
+      updateTraps(dt);
+      
+      // Update lava and eruptions for volcano level
+      if (currentLevel === 7) {
+        updateLava(dt);
+        updateEruptions(dt);
+      }
+      
+      // Update jungle for level 9
+      if (currentLevel === 8) {
+        updateJungle(dt);
+      }
+      
+      // Update final level elements
+      if (currentLevel === 9) {
+        updateFinal(dt);
+      }
+      
+      // Update invulnerability timer
+      if (player.invulnerable > 0) {
+        player.invulnerable -= dt;
+      }
+
+      // walk animation
+      const isWalking = player.onGround && Math.abs(player.vx) > 1;
+      if(isWalking && walkFramesLoaded()){ walkTimer += dt; while(walkTimer >= WALK_FRAME_INTERVAL){ walkTimer -= WALK_FRAME_INTERVAL; walkFrame = (walkFrame+1) % walkImgs.length; } } else { walkTimer=0; walkFrame=0; }
+
+      // UI
+      document.getElementById('score').innerText = 'Очки: ' + Math.max(0, Math.floor(cameraX/10) + stars.filter(s=>s.taken).length*10);
+      const pct = Math.min(1, Math.max(0, cameraX / levels[currentLevel].length)); 
+      document.getElementById('levelFill').style.width = (pct*100) + '%'; 
+    }
+
+    function updateSub(dt){ 
+      const L = levels[currentLevel]; 
+      player.vy += GRAV * dt; 
+      const prevBottom = player.y + player.h; 
+      const prevX = player.x; 
+      player.x += player.vx * dt; 
+      player.y += player.vy * dt; 
+      cameraX = Math.max(0, Math.min(player.x - 120, L.length)); 
+      if(player.x < 0) player.x = 0; 
+      player.onGround = false;
+
+      // platform collision
+      for(let p of platforms){ 
+        const platTop = p.y; 
+        const platLeft = p.x; 
+        const platRight = p.x + p.w; 
+        const playerLeft = player.x; 
+        const playerRight = player.x + player.w; 
+        const newBottom = player.y + player.h; 
+        if(playerRight > platLeft && playerLeft < platRight){ 
+          if(prevBottom <= platTop && newBottom >= platTop && player.vy >= 0){ 
+            player.y = platTop - player.h; 
+            player.vy = 0; 
+            player.onGround = true; 
+            player.jumps = 0; 
+          } 
+        } 
+      }
+
+      // obstacle collision only when on ground -> block horizontal pass
+      for(let ob of obstacles){ 
+        const obLeft = ob.x, obRight = ob.x + ob.w, obTop = ob.y, obBottom = ob.y + ob.h; 
+        const pLeft = player.x, pRight = player.x + player.w, pTop = player.y, pBottom = player.y + player.h; 
+        const overlapX = pRight > obLeft && pLeft < obRight; 
+        const overlapY = pBottom > obTop && pTop < obBottom; 
+        if(overlapX && overlapY){ 
+          if(player.onGround){ 
+            player.x = prevX; 
+            player.vx = 0; 
+          }
+        } 
+      }
+      
+      // Lava pool collision for volcano level
+      if (currentLevel === 7) {
+        for (let pool of lavaPools) {
+          const poolLeft = pool.x, poolRight = pool.x + pool.w, poolTop = pool.y, poolBottom = pool.y + pool.h;
+          const pLeft = player.x, pRight = player.x + player.w, pTop = player.y, pBottom = player.y + player.h;
+          const overlapX = pRight > poolLeft && pLeft < poolRight;
+          const overlapY = pBottom > poolTop && pTop < poolBottom;
+          
+          if (overlapX && overlapY && player.invulnerable <= 0) {
+            player.health -= 20;
+            player.invulnerable = 1.5;
+            player.vy = -300;
+            if (soundOn) playBeep(220, 0.1);
+            showDamage();
+            updatePlayerHealth();
+          }
+        }
+      }
+      
+      // Eruption collision for volcano level
+      if (currentLevel === 7) {
+        for (let eruption of eruptions) {
+          const dx = (player.x + player.w/2) - (eruption.x + eruption.size/2);
+          const dy = (player.y + player.h/2) - (eruption.y + eruption.size/2);
+          const distance = Math.sqrt(dx*dx + dy*dy);
+          
+          if (distance < (player.w/2 + eruption.size/2) && player.invulnerable <= 0) {
+            player.health -= 15;
+            player.invulnerable = 1.0;
+            player.vy = -400;
+            player.vx = (player.x < eruption.x ? -200 : 200);
+            if (soundOn) playBeep(220, 0.1);
+            showDamage();
+            updatePlayerHealth();
+          }
+        }
+      }
+      
+      // Jungle vine collision for level 9
+      if (currentLevel === 8) {
+        for (let vine of jungleVines) {
+          const vineLeft = vine.x, vineRight = vine.x + vine.w, vineTop = vine.y, vineBottom = vine.y + vine.h;
+          const pLeft = player.x, pRight = player.x + player.w, pTop = player.y, pBottom = player.y + player.h;
+          const overlapX = pRight > vineLeft && pLeft < vineRight;
+          const overlapY = pBottom > vineTop && pTop < vineBottom;
+          
+          if (overlapX && overlapY && player.invulnerable <= 0) {
+            player.health -= 10;
+            player.invulnerable = 0.8;
+            player.vy = -200;
+            if (soundOn) playBeep(220, 0.1);
+            showDamage();
+            updatePlayerHealth();
+          }
+        }
+      }
+      
+      // Energy field collision for final level
+      if (currentLevel === 9) {
+        for (let field of energyFields) {
+          const fieldLeft = field.x, fieldRight = field.x + field.w, fieldTop = field.y, fieldBottom = field.y + field.h;
+          const pLeft = player.x, pRight = player.x + player.w, pTop = player.y, pBottom = player.y + player.h;
+          const overlapX = pRight > fieldLeft && pLeft < fieldRight;
+          const overlapY = pBottom > fieldTop && pTop < fieldBottom;
+          
+          if (overlapX && overlapY && player.invulnerable <= 0) {
+            player.health -= 15;
+            player.invulnerable = 1.2;
+            player.vy = -350;
+            if (soundOn) playBeep(220, 0.1);
+            showDamage();
+            updatePlayerHealth();
+          }
+        }
+      }
+
+      // stars
+      for(let s of stars){ if(!s.taken){ const dx = (player.x + player.w/2) - s.x; const dy = (player.y + player.h/2) - s.y; if(Math.sqrt(dx*dx+dy*dy) < 40){ s.taken = true; score += 10; if(soundOn) playBeep(1320,0.08); } } }
+
+      // death
+      if(player.y > H + 200 || player.health <= 0){ running = false; stopMusic(); showCenterButton('Перезапустить'); }
+
+      // spawn more segments if needed (keeps finite) - not for boss level
+      if(L.theme !== 'boss' && L.theme !== 'final' && lastPlatformX < L.length + 400 && lastPlatformX - cameraX < W + 400){ 
+        const w = rnd(L.minW, L.maxW); 
+        const gap = rnd(L.minGap, L.maxGap); 
+        const prevY = platforms[platforms.length-1] ? platforms[platforms.length-1].y : H*0.6; 
+        const y = Math.max(H*0.2, Math.min(H*0.9, prevY + rnd(-120,120))); 
+        const x = lastPlatformX + gap; 
+        platforms.push({x,y,w}); 
+        if(Math.random() < 0.75) stars.push({ x: x + w/2 + rnd(-w/4,w/4), y: y - 60, taken: false });
+        
+        if(Math.random() < 0.5){ 
+          if(L.theme === 'city'){ 
+            // сохранены все препятствия с их размерами
+            if(Math.random()<0.6){ 
+              const ow = Math.min(w-20, rnd(80, Math.min(280, w*0.9))); 
+              const oh = rnd(120,200); 
+              const ox = x + rnd(10, Math.max(10, w-ow-10)); 
+              const oy = y - oh; 
+              obstacles.push({x:ox,y:oy,w:ow,h:oh,type:'house'}); 
+            } else { 
+              const ow = rnd(40,80); 
+              const oh = rnd(80,140); 
+              const ox = x + rnd(10, Math.max(10, w-ow-10)); 
+              const oy = y - oh; 
+              obstacles.push({x:ox,y:oy,w:ow,h:oh,type:'lamp'}); 
+            } 
+          } else if(L.theme === 'forest'){ 
+            // сохранены все препятствия с их размерами
+            if(Math.random()<0.7){ 
+              const ow = Math.min(w-20, rnd(70, Math.min(220, w*0.85))); 
+              const oh = rnd(120,180); 
+              const ox = x + rnd(10, Math.max(10, w-ow-10)); 
+              const oy = y - oh; 
+              obstacles.push({x:ox,y:oy,w:ow,h:oh,type:'tree'}); 
+            } else { 
+              const ow = rnd(50,120); 
+              const oh = rnd(50,100); 
+              const ox = x + rnd(10, Math.max(10, w-ow-10)); 
+              const oy = y - oh; 
+              obstacles.push({x:ox,y:oy,w:ow,h:oh,type:'bush'}); 
+            } 
+          } else if(L.theme === 'space'){ 
+            if(Math.random()<0.6){ const ow = rnd(40,100); const oh = rnd(40,100); const ox = x + rnd(10, Math.max(10, w-ow-10)); const oy = y - oh; obstacles.push({x:ox,y:oy,w:ow,h:oh,type:'asteroid'}); } 
+            else { const ow = rnd(60,140); const oh = rnd(60,140); const ox = x + rnd(10, Math.max(10, w-ow-10)); const oy = y - oh; obstacles.push({x:ox,y:oy,w:ow,h:oh,type:'planet'}); } 
+          } else if(L.theme === 'desert'){ 
+            if(Math.random()<0.7){ const ow = rnd(30,70); const oh = rnd(50,120); const ox = x + rnd(10, Math.max(10, w-ow-10)); const oy = y - oh; obstacles.push({x:ox,y:oy,w:ow,h:oh,type:'cactus'}); } 
+            else { const ow = rnd(80,180); const oh = rnd(60,140); const ox = x + rnd(10, Math.max(10, w-ow-10)); const oy = y - oh; obstacles.push({x:ox,y:oy,w:ow,h:oh,type:'pyramid'}); } 
+          } else if(L.theme === 'crystal'){ 
+            if(Math.random()<0.6){ const ow = rnd(40,100); const oh = rnd(60,140); const ox = x + rnd(10, Math.max(10, w-ow-10)); const oy = y - oh; obstacles.push({x:ox,y:oy,w:ow,h:oh,type:'crystal'}); } 
+            else { const ow = rnd(50,120); const oh = rnd(40,100); const ox = x + rnd(10, Math.max(10, w-ow-10)); const oy = y - oh; obstacles.push({x:ox,y:oy,w:ow,h:oh,type:'geode'}); } 
+          } else if(L.theme === 'cloud'){ 
+            if(Math.random()<0.6){ const ow = rnd(60,160); const oh = rnd(40,100); const ox = x + rnd(10, Math.max(10, w-ow-10)); const oy = y - oh; obstacles.push({x:ox,y:oy,w:ow,h:oh,type:'cloud'}); } 
+            else { const ow = rnd(40,120); const oh = rnd(60,140); const ox = x + rnd(10, Math.max(10, w-ow-10)); const oy = y - oh; obstacles.push({x:ox,y:oy,w:ow,h:oh,type:'airship'}); } 
+          } else if(L.theme === 'volcano'){ 
+            if(Math.random()<0.6){ const ow = rnd(60,180); const oh = rnd(80,160); const ox = x + rnd(10, Math.max(10, w-ow-10)); const oy = y - oh; obstacles.push({x:ox,y:oy,w:ow,h:oh,type:'volcano'}); } 
+            else { const ow = rnd(40,100); const oh = rnd(40,100); const ox = x + rnd(10, Math.max(10, w-ow-10)); const oy = y - oh; obstacles.push({x:ox,y:oy,w:ow,h:oh,type:'rock'}); } 
+            
+            // Add lava pools for volcano level
+            if(Math.random() < 0.3) {
+              const lw = rnd(80, 200);
+              const lx = x + rnd(0, w - lw);
+              lavaPools.push({ x: lx, y: y + 20, w: lw, h: 40, timer: 0 });
+            }
+          } else if(L.theme === 'jungle'){ 
+            if(Math.random()<0.6){ const ow = rnd(50,150); const oh = rnd(80,180); const ox = x + rnd(10, Math.max(10, w-ow-10)); const oy = y - oh; obstacles.push({x:ox,y:oy,w:ow,h:oh,type:'tree'}); } 
+            else { const ow = rnd(30,80); const oh = rnd(40,100); const ox = x + rnd(10, Math.max(10, w-ow-10)); const oy = y - oh; obstacles.push({x:ox,y:oy,w:ow,h:oh,type:'vine'}); } 
+            
+            // Add jungle vines
+            if(Math.random() < 0.4) {
+              const vw = 20;
+              const vh = rnd(100, 200);
+              const vx = x + rnd(10, w - 30);
+              jungleVines.push({ x: vx, y: y - vh, w: vw, h: vh, swing: Math.random() * Math.PI * 2 });
+            }
+          } else if(L.theme === 'final'){ 
+            if(Math.random()<0.6){ const ow = rnd(80,200); const oh = rnd(100,180); const ox = x + rnd(10, Math.max(10, w-ow-10)); const oy = y - oh; obstacles.push({x:ox,y:oy,w:ow,h:oh,type:'portal'}); } 
+            else { const ow = rnd(60,140); const oh = rnd(80,160); const ox = x + rnd(10, Math.max(10, w-ow-10)); const oy = y - oh; obstacles.push({x:ox,y:oy,w:ow,h:oh,type:'monolith'}); } 
+            
+            // Add energy fields for final level
+            if(Math.random() < 0.3) {
+              const efw = rnd(100, 200);
+              const efx = x + rnd(0, w - efw);
+              energyFields.push({ x: efx, y: y + 20, w: efw, h: 40, timer: 0 });
+            }
+          } 
+        }
+        lastPlatformX = x + w; 
+      }
+
+      // cleanup
+      while(platforms.length && platforms[0].x + platforms[0].w < cameraX - 600) platforms.shift();
+      while(stars.length && stars[0].x < cameraX - 600) stars.shift();
+      while(obstacles.length && obstacles[0].x + obstacles[0].w < cameraX - 600) obstacles.shift();
+      while(lavaPools.length && lavaPools[0].x + lavaPools[0].w < cameraX - 600) lavaPools.shift();
+      while(jungleVines.length && jungleVines[0].x + jungleVines[0].w < cameraX - 600) jungleVines.shift();
+      while(energyFields.length && energyFields[0].x + energyFields[0].w < cameraX - 600) energyFields.shift();
+      while(traps.length && traps[0].x + traps[0].w < cameraX - 600) traps.shift();
+
+      // level end (for non-boss levels)
+      if(L.theme !== 'boss' && L.theme !== 'final' && cameraX >= levels[currentLevel].length && !levelComplete){ 
+        levelComplete = true; 
+        running = false; 
+        stopMusic(); 
+        if(currentLevel < levels.length-1) showCenterButton('Перейти к следующему уровню'); 
+        else showCenterButton('Поздравляем! Игра пройдена — начать заново'); 
+      }
+    }
+
+    // ТЕКСТУРА ДЛЯ ОБЛАЧНЫХ ПЛАТФОРМ
+    // ТЕКСТУРА ДЛЯ ФИНАЛЬНЫХ ПЛАТФОРМ
+    function drawFinalPlatform(rx, ry, w) {
+      // Основа платформы из энергии
+      const gradient = ctx.createLinearGradient(rx, ry, rx, ry + 20);
+      gradient.addColorStop(0, '#6b00ff');
+      gradient.addColorStop(0.5, '#0088ff');
+      gradient.addColorStop(1, '#00ffff');
+      
+      ctx.fillStyle = gradient;
+      roundRect(ctx, rx, ry, w, 20, 8, true, false);
+      
+      // Энергетические узоры
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < w; i += 15) {
+        ctx.beginPath();
+        ctx.moveTo(rx + i, ry + 5);
+        ctx.lineTo(rx + i + 8, ry + 15);
+        ctx.stroke();
+      }
+      
+      // Пульсирующие энергетические сферы
+      const time = performance.now() * 0.001;
+      for (let i = 0; i < w; i += 25) {
+        const pulse = Math.sin(time * 3 + i) * 0.3 + 0.7;
+        ctx.fillStyle = `rgba(255,255,255,${pulse * 0.6})`;
+        ctx.beginPath();
+        ctx.arc(rx + i + 12, ry + 10, 3 * pulse, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // render with theme-specific backgrounds and textures
+    function render(dt){ 
+      const L = levels[currentLevel]; 
+      
+      // Background
+      if(L.theme === 'city'){ 
+        ctx.fillStyle = '#eef6ff'; ctx.fillRect(0,0,W,H);
+        const skylineCount = Math.max(6, Math.floor(W/140));
+        for(let i=0;i<skylineCount;i++){ const bx = (i*180 - (cameraX*0.12)%200); const bw = 120 + (i%3)*40; const bh = 80 + (i%4)*40; ctx.fillStyle = i%2 ? '#d6e8ff' : '#cbe5ff'; ctx.fillRect(bx, H*0.12 + ((i%2)?-6:6), bw, bh); }
+        ctx.fillStyle = '#f3f3f3'; ctx.fillRect(0, H*0.85, W, H*0.15);
+      } else if(L.theme === 'forest'){ 
+        ctx.fillStyle = '#eafaf0'; ctx.fillRect(0,0,W,H);
+        for(let i=0;i<40;i++){ const sx = (i*230 + (cameraX*0.06*(i%5+1))) % (W+200) - 100; const height = 60 + (i%6)*20; ctx.fillStyle = 'rgba(30,90,40,0.08)'; ctx.beginPath(); ctx.ellipse(sx, H*0.18 + (i%3)*10, 90, height, 0, 0, Math.PI*2); ctx.fill(); }
+      } else if(L.theme === 'space'){ 
+        ctx.fillStyle = '#0a0a2a'; ctx.fillRect(0,0,W,H);
+        for(let i=0;i<150;i++){ const sx = (i*97 + (cameraX*0.01*(i%7+1))) % W; const sy = (i*43 + (i*23)) % H; const size = 1 + (i%3); ctx.fillStyle = `rgba(255,255,255,${0.3 + (i%7)*0.1})`; ctx.fillRect(sx,sy,size,size); }
+        for(let i=0;i<8;i++){ const px = (i*350 - (cameraX*0.05*(i%3+1))) % (W+400) - 200; const py = 60 + (i%4)*40; const radius = 20 + (i%3)*15; ctx.fillStyle = i%2 ? '#4a2a8a' : '#8a2a4a'; ctx.beginPath(); ctx.arc(px, py, radius, 0, Math.PI*2); ctx.fill(); }
+      } else if(L.theme === 'desert'){ 
+        ctx.fillStyle = '#f7e9c8'; ctx.fillRect(0,0,W,H);
+        for(let i=0;i<25;i++){ const dx = (i*280 - (cameraX*0.08*(i%4+1))) % (W+400) - 200; const dy = H*0.7 + Math.sin(i*0.8)*20; const dw = 180 + (i%3)*60; ctx.fillStyle = i%2 ? '#e8d8b5' : '#d4c4a0'; ctx.beginPath(); ctx.ellipse(dx, dy, dw, 40, 0, 0, Math.PI*2); ctx.fill(); }
+        ctx.fillStyle = '#ffaa33'; ctx.beginPath(); ctx.arc(W*0.8, H*0.15, 40, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = 'rgba(255,170,51,0.3)'; ctx.beginPath(); ctx.arc(W*0.8, H*0.15, 60, 0, Math.PI*2); ctx.fill();
+      } else if(L.theme === 'boss'){ 
+        ctx.fillStyle = '#1a1a2a'; ctx.fillRect(0,0,W,H);
+        for(let i=0;i<50;i++){ 
+          const cx = (i*120 - (cameraX*0.03*(i%7+1))) % (W+200) - 100; 
+          const cy = H*0.2 + Math.sin(i*0.5)*30; 
+          ctx.fillStyle = `rgba(100,50,200,${0.1 + (i%5)*0.05})`; 
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.lineTo(cx + 20, cy - 40);
+          ctx.lineTo(cx + 40, cy);
+          ctx.lineTo(cx + 30, cy + 30);
+          ctx.lineTo(cx + 10, cy + 30);
+          ctx.closePath();
+          ctx.fill();
+        }
+      } else if(L.theme === 'crystal'){ 
+        // Crystal caves background
+        ctx.fillStyle = '#0a1420'; ctx.fillRect(0,0,W,H);
+        
+        // Crystal formations in background
+        for(let i=0;i<30;i++){ 
+          const cx = (i*180 - (cameraX*0.04*(i%5+1))) % (W+300) - 150; 
+          const cy = H*0.3 + Math.sin(i*0.7)*40; 
+          const csize = 30 + (i%4)*20;
+          
+          ctx.fillStyle = `hsla(${200 + (i%3)*40}, 70%, 50%, 0.1)`;
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.lineTo(cx + csize*0.8, cy - csize*0.6);
+          ctx.lineTo(cx + csize*1.2, cy);
+          ctx.lineTo(cx + csize*0.8, cy + csize*0.6);
+          ctx.closePath();
+          ctx.fill();
+        }
+        
+        // Glowing crystals in distance
+        for(let i=0;i<20;i++){ 
+          const gx = (i*220 + (cameraX*0.02*(i%3+1))) % (W+400) - 200; 
+          const gy = H*0.2 + Math.cos(i*0.5)*30; 
+          ctx.fillStyle = `hsla(${220 + (i%2)*60}, 80%, 60%, 0.15)`;
+          ctx.beginPath();
+          ctx.arc(gx, gy, 15 + (i%3)*10, 0, Math.PI*2);
+          ctx.fill();
+        }
+      } else if(L.theme === 'cloud'){ 
+        // Cloud kingdom background
+        const gradient = ctx.createLinearGradient(0, 0, 0, H);
+        gradient.addColorStop(0, '#a6d8ff');
+        gradient.addColorStop(1, '#e6f2ff');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, W, H);
+        
+        // Distant clouds
+        for(let i=0;i<15;i++){ 
+          const cloudX = (i*300 - (cameraX*0.05*(i%4+1))) % (W+400) - 200; 
+          const cloudY = H*0.2 + Math.sin(i*0.8)*30; 
+          const cloudSize = 60 + (i%4)*30;
+          
+          ctx.fillStyle = 'rgba(255,255,255,0.7)';
+          ctx.beginPath();
+          ctx.arc(cloudX, cloudY, cloudSize, 0, Math.PI * 2);
+          ctx.arc(cloudX + cloudSize*0.6, cloudY - cloudSize*0.3, cloudSize*0.7, 0, Math.PI * 2);
+          ctx.arc(cloudX - cloudSize*0.5, cloudY - cloudSize*0.2, cloudSize*0.8, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        
+        // Радуги в облачном мире
+        for(let i=0;i<3;i++){ 
+          const rainbowX = (i*600 - (cameraX*0.02)) % (W+800) - 400; 
+          if(rainbowX > -400 && rainbowX < W+400) {
+            const rainbowWidth = 200;
+            for(let j=0;j<7;j++){
+              const hue = (j * 30) % 360;
+              ctx.strokeStyle = `hsla(${hue}, 80%, 60%, 0.4)`;
+              ctx.lineWidth = 15;
+              ctx.beginPath();
+              ctx.arc(rainbowX, H*0.8, rainbowWidth + j*15, 0, Math.PI);
+              ctx.stroke();
+            }
+          }
+        }
+      } else if(L.theme === 'volcano'){ 
+        // Вулканический мир
+        const gradient = ctx.createLinearGradient(0, 0, 0, H);
+        gradient.addColorStop(0, '#331100');
+        gradient.addColorStop(1, '#662200');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, W, H);
+        
+        // Лавовые реки на заднем плане
+        for(let i=0;i<5;i++){ 
+          const lx = (i*400 - (cameraX*0.1*(i%3+1))) % (W+500) - 250; 
+          const ly = H*0.9 + Math.sin(i*0.5)*10; 
+          const lw = 300 + (i%3)*100; 
+          ctx.fillStyle = '#ff3300'; 
+          ctx.fillRect(lx, ly, lw, 30); 
+          ctx.fillStyle = '#ff6600'; 
+          ctx.fillRect(lx, ly, lw, 10); 
+        }
+        
+        // Пепел в воздухе
+        for(let i=0;i<100;i++){ 
+          const ax = (i*97 + (cameraX*0.02*(i%7+1))) % W; 
+          const ay = (i*43 + (i*23)) % H; 
+          const asize = 2 + (i%3); 
+          ctx.fillStyle = `rgba(100,100,100,${0.3 + (i%7)*0.1})`; 
+          ctx.fillRect(ax,ay,asize,asize); 
+        }
+        
+        // Вулканы на заднем плане
+        for(let i=0;i<4;i++){ 
+          const vx = (i*600 - (cameraX*0.05)) % (W+800) - 400; 
+          if(vx > -400 && vx < W+400) {
+            const vw = 200 + (i%2)*100;
+            const vh = 150 + (i%2)*50;
+            
+            // Основа вулкана
+            ctx.fillStyle = '#442200';
+            ctx.beginPath();
+            ctx.moveTo(vx, H*0.7);
+            ctx.lineTo(vx + vw/2, H*0.7 - vh);
+            ctx.lineTo(vx + vw, H*0.7);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Лава на вершине
+            ctx.fillStyle = '#ff3300';
+            ctx.beginPath();
+            ctx.arc(vx + vw/2, H*0.7 - vh, 30, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Дым
+            ctx.fillStyle = 'rgba(50,50,50,0.5)';
+            ctx.beginPath();
+            ctx.ellipse(vx + vw/2, H*0.7 - vh - 40, 40, 60, 0, 0, Math.PI*2);
+            ctx.fill();
+          }
+        }
+      } else if(L.theme === 'jungle'){ 
+        // Джунгли
+        const gradient = ctx.createLinearGradient(0, 0, 0, H);
+        gradient.addColorStop(0, '#1a3a1a');
+        gradient.addColorStop(1, '#2a5a2a');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, W, H);
+        
+        // Листья и растения на заднем плане
+        for(let i=0;i<60;i++){ 
+          const jx = (i*150 - (cameraX*0.08*(i%5+1))) % (W+300) - 150; 
+          const jy = H*0.2 + Math.sin(i*0.7)*40; 
+          const jsize = 40 + (i%4)*20;
+          
+          ctx.fillStyle = `hsla(${120 + (i%3)*20}, 60%, ${20 + (i%2)*10}%, 0.3)`;
+          ctx.beginPath();
+          ctx.ellipse(jx, jy, jsize, jsize*0.7, 0, 0, Math.PI*2);
+          ctx.fill();
+        }
+        
+        // Тропические цветы
+        for(let i=0;i<20;i++){ 
+          const fx = (i*300 + (cameraX*0.03*(i%3+1))) % (W+400) - 200; 
+          const fy = H*0.3 + Math.cos(i*0.5)*30; 
+          const fsize = 10 + (i%3)*5;
+          
+          ctx.fillStyle = `hsla(${300 + (i%2)*60}, 80%, 60%, 0.6)`;
+          ctx.beginPath();
+          ctx.arc(fx, fy, fsize, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // Лепестки
+          ctx.fillStyle = `hsla(${330 + (i%2)*30}, 80%, 70%, 0.4)`;
+          for(let p=0; p<5; p++) {
+            const angle = p * (Math.PI*2/5);
+            ctx.beginPath();
+            ctx.ellipse(
+              fx + Math.cos(angle)*fsize*1.5, 
+              fy + Math.sin(angle)*fsize*1.5, 
+              fsize, fsize*0.7, angle, 0, Math.PI*2
+            );
+            ctx.fill();
+          }
+        }
+      } else if(L.theme === 'final'){ 
+        // Финальный уровень - космический портал
+        const gradient = ctx.createLinearGradient(0, 0, 0, H);
+        gradient.addColorStop(0, '#000033');
+        gradient.addColorStop(0.5, '#330066');
+        gradient.addColorStop(1, '#6600cc');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, W, H);
+        
+        // Галактики и туманности
+        for(let i=0;i<20;i++){ 
+          const gx = (i*400 - (cameraX*0.02*(i%5+1))) % (W+500) - 250; 
+          const gy = H*0.3 + Math.sin(i*0.6)*50; 
+          const gsize = 80 + (i%4)*40;
+          
+          const nebulaGradient = ctx.createRadialGradient(gx, gy, 0, gx, gy, gsize);
+          nebulaGradient.addColorStop(0, `hsla(${200 + (i%3)*60}, 70%, 60%, 0.3)`);
+          nebulaGradient.addColorStop(1, `hsla(${280 + (i%3)*40}, 70%, 40%, 0.1)`);
+          
+          ctx.fillStyle = nebulaGradient;
+          ctx.beginPath();
+          ctx.arc(gx, gy, gsize, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        
+        // Квантовые частицы
+        for(let i=0;i<200;i++){ 
+          const qx = (i*97 + (cameraX*0.01*(i%7+1))) % W; 
+          const qy = (i*43 + (i*23)) % H; 
+          const qsize = 1 + (i%2); 
+          ctx.fillStyle = `hsla(${i*18}, 80%, 60%, ${0.3 + (i%7)*0.1})`; 
+          ctx.fillRect(qx,qy,qsize,qsize); 
+        }
+        
+        // Порталы вдалеке
+        for(let i=0;i<5;i++){ 
+          const px = (i*800 - (cameraX*0.01)) % (W+1000) - 500; 
+          if(px > -500 && px < W+500) {
+            const psize = 50 + (i%3)*20;
+            const portalGradient = ctx.createRadialGradient(px, H*0.4, 0, px, H*0.4, psize);
+            portalGradient.addColorStop(0, '#00ffff');
+            portalGradient.addColorStop(0.7, '#0088ff');
+            portalGradient.addColorStop(1, '#0000ff');
+            
+            ctx.fillStyle = portalGradient;
+            ctx.beginPath();
+            ctx.arc(px, H*0.4, psize, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Спиральный эффект портала
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            for(let j=0; j<3; j++) {
+              ctx.beginPath();
+              ctx.arc(px, H*0.4, psize * (0.3 + j*0.2), 0, Math.PI * 2);
+              ctx.stroke();
+            }
+          }
+        }
+      }
+
+      // Render background elements
+      renderBackgroundElements();
+
+      // Platforms with theme-specific textures
+      for(let p of platforms){ 
+        const rx = Math.round(p.x - cameraX); 
+        const ry = Math.round(p.y); 
+        if(rx < -p.w || rx > W) continue;
+        
+        switch(L.theme) {
+          case 'city':
+            drawCityPlatform(rx, ry, p.w);
+            break;
+          case 'forest':
+            drawForestPlatform(rx, ry, p.w);
+            break;
+          case 'space':
+            drawSpacePlatform(rx, ry, p.w);
+            break;
+          case 'desert':
+            drawDesertPlatform(rx, ry, p.w);
+            break;
+          case 'boss':
+            drawBossPlatform(rx, ry, p.w);
+            break;
+          case 'crystal':
+            drawCrystalPlatform(rx, ry, p.w);
+            break;
+          case 'cloud':
+            drawCloudPlatform(rx, ry, p.w);
+            break;
+          case 'volcano':
+            drawVolcanoPlatform(rx, ry, p.w);
+            break;
+          case 'jungle':
+            drawJunglePlatform(rx, ry, p.w);
+            break;
+          case 'final':
+            drawFinalPlatform(rx, ry, p.w);
+            break;
+        }
+      }
+      
+      // Lava pools for volcano level
+      if (currentLevel === 7) {
+        for (let pool of lavaPools) {
+          const rx = Math.round(pool.x - cameraX);
+          const ry = Math.round(pool.y);
+          
+          if (rx < -pool.w || rx > W) continue;
+          
+          // Лавовое озеро с анимацией
+          ctx.fillStyle = `rgba(255,${50 + Math.sin(pool.timer * 5) * 50},0,0.8)`;
+          roundRect(ctx, rx, ry, pool.w, pool.h, 10, true, false);
+          
+          // Пузыри в лаве
+          ctx.fillStyle = `rgba(255,200,100,0.6)`;
+          for (let i = 0; i < pool.w; i += 20) {
+            const bubbleSize = 3 + Math.sin(pool.timer * 3 + i) * 2;
+            ctx.beginPath();
+            ctx.arc(rx + i + 10, ry + pool.h/2, bubbleSize, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          
+          // Свечение лавы
+          ctx.fillStyle = `rgba(255,100,0,0.3)`;
+          roundRect(ctx, rx - 5, ry - 5, pool.w + 10, pool.h + 10, 12, true, false);
+        }
+      }
+      
+      // Eruptions for volcano level
+      if (currentLevel === 7) {
+        for (let eruption of eruptions) {
+          const rx = Math.round(eruption.x - cameraX);
+          const ry = Math.round(eruption.y);
+          
+          if (rx < -eruption.size || rx > W) continue;
+          
+          // Лавовый камень
+          ctx.fillStyle = '#ff3300';
+          ctx.beginPath();
+          ctx.arc(rx, ry, eruption.size, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // Свечение
+          ctx.fillStyle = 'rgba(255,100,0,0.4)';
+          ctx.beginPath();
+          ctx.arc(rx, ry, eruption.size * 1.5, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // Дымовой след
+          ctx.fillStyle = 'rgba(50,50,50,0.3)';
+          ctx.beginPath();
+          ctx.ellipse(rx, ry + eruption.size * 2, eruption.size, eruption.size * 1.5, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      
+      // Jungle vines for level 9
+      if (currentLevel === 8) {
+        for (let vine of jungleVines) {
+          const rx = Math.round(vine.x - cameraX);
+          const ry = Math.round(vine.y);
+          
+          if (rx < -vine.w || rx > W) continue;
+          
+          // Лиана с анимацией качания
+          const swingOffset = Math.sin(vine.swing) * 10;
+          ctx.fillStyle = '#3a5a3a';
+          ctx.fillRect(rx + swingOffset, ry, vine.w, vine.h);
+          
+          // Текстура лианы
+          ctx.fillStyle = '#2a4a2a';
+          for (let i = 0; i < vine.h; i += 15) {
+            ctx.fillRect(rx + swingOffset, ry + i, vine.w, 5);
+          }
+          
+          // Листья на лиане
+          ctx.fillStyle = '#4a7a4a';
+          ctx.beginPath();
+          ctx.ellipse(rx + swingOffset + vine.w/2, ry + 20, 12, 8, Math.sin(vine.swing) * 0.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.ellipse(rx + swingOffset + vine.w/2, ry + vine.h - 20, 10, 6, -Math.sin(vine.swing) * 0.3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      
+      // Energy fields for final level
+      if (currentLevel === 9) {
+        for (let field of energyFields) {
+          const rx = Math.round(field.x - cameraX);
+          const ry = Math.round(field.y);
+          
+          if (rx < -field.w || rx > W) continue;
+          
+          // Энергетическое поле с анимацией
+          const pulse = 0.5 + Math.sin(field.timer * 4) * 0.3;
+          const fieldGradient = ctx.createLinearGradient(rx, ry, rx, ry + field.h);
+          fieldGradient.addColorStop(0, `rgba(0, 255, 255, ${pulse})`);
+          fieldGradient.addColorStop(1, `rgba(0, 100, 255, ${pulse * 0.7})`);
+          
+          ctx.fillStyle = fieldGradient;
+          roundRect(ctx, rx, ry, field.w, field.h, 8, true, false);
+          
+          // Энергетические частицы
+          ctx.fillStyle = `rgba(255, 255, 255, ${pulse})`;
+          for (let i = 0; i < field.w; i += 15) {
+            const particleY = ry + Math.sin(field.timer * 3 + i) * 5;
+            ctx.beginPath();
+            ctx.arc(rx + i + 7, particleY + field.h/2, 2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+
+      // Render traps
+      renderTraps();
+
+      // Obstacles
+      for(let ob of obstacles){ 
+        const rx = Math.round(ob.x - cameraX); 
+        const ry = Math.round(ob.y);
+        if(rx < -ob.w || rx > W) continue;
+        
+        if(ob.type === 'house' && houseLoaded){ 
+          drawSpriteCentered(houseImg, rx, ry, ob.w, ob.h, 1);
+        } else if(ob.type === 'lamp' && lampLoaded){ 
+          drawSpriteCentered(lampImg, rx, ry, ob.w, ob.h, 1);
+        } else if(ob.type === 'tree' && treeLoaded){ 
+          drawSpriteCentered(treeImg, rx, ry, ob.w, ob.h, 1);
+        } else if(ob.type === 'bush' && bushLoaded){ 
+          drawSpriteCentered(bushImg, rx, ry, ob.w, ob.h, 1);
+        } else if(ob.type === 'asteroid' && asteroidLoaded){ 
+          drawSpriteCentered(asteroidImg, rx, ry, ob.w, ob.h, 1);
+        } else if(ob.type === 'planet' && planetLoaded){ 
+          drawSpriteCentered(planetImg, rx, ry, ob.w, ob.h, 1);
+        } else if(ob.type === 'cactus' && cactusLoaded){ 
+          drawSpriteCentered(cactusImg, rx, ry, ob.w, ob.h, 1);
+        } else if(ob.type === 'pyramid' && pyramidLoaded){ 
+          drawSpriteCentered(pyramidImg, rx, ry, ob.w, ob.h, 1);
+        } else if(ob.type === 'crystal' && crystalLoaded){ 
+          drawSpriteCentered(crystalImg, rx, ry, ob.w, ob.h, 1);
+        } else if(ob.type === 'cloud' && cloudLoaded){ 
+          drawSpriteCentered(cloudImg, rx, ry, ob.w, ob.h, 1);
+        } else if(ob.type === 'volcano' && volcanoLoaded){ 
+          drawSpriteCentered(volcanoImg, rx, ry, ob.w, ob.h, 1);
+        } else if(ob.type === 'vine' && vineLoaded){ 
+          drawSpriteCentered(vineImg, rx, ry, ob.w, ob.h, 1);
+        } else if(ob.type === 'portal' && portalLoaded){ 
+          drawSpriteCentered(portalImg, rx, ry, ob.w, ob.h, 1);
+        } else { 
+          // Fallback colored rectangles
+          if(ob.type === 'house') ctx.fillStyle='#8B4513'; 
+          else if(ob.type === 'lamp') ctx.fillStyle='#666'; 
+          else if(ob.type === 'tree') ctx.fillStyle='#2d5a2d'; 
+          else if(ob.type === 'bush') ctx.fillStyle='#3a7a3a'; 
+          else if(ob.type === 'asteroid') ctx.fillStyle='#777'; 
+          else if(ob.type === 'planet') ctx.fillStyle='#ff6b6b'; 
+          else if(ob.type === 'cactus') ctx.fillStyle='#2d8b2d'; 
+          else if(ob.type === 'pyramid') ctx.fillStyle='#daa520'; 
+          else if(ob.type === 'crystal') ctx.fillStyle='#6a5acd'; 
+          else if(ob.type === 'geode') ctx.fillStyle='#9370db'; 
+          else if(ob.type === 'airship') ctx.fillStyle='#4682b4'; 
+          else if(ob.type === 'volcano') ctx.fillStyle='#552200'; 
+          else if(ob.type === 'rock') ctx.fillStyle='#333'; 
+          else if(ob.type === 'vine') ctx.fillStyle='#3a5a3a'; 
+          else if(ob.type === 'portal') ctx.fillStyle='#6b00ff'; 
+          else if(ob.type === 'monolith') ctx.fillStyle='#4a4a4a'; 
+          else ctx.fillStyle='#aaa'; 
+          ctx.fillRect(rx, ry, ob.w, ob.h); 
+        } 
+      }
+
+      // Stars (collectibles)
+      for(let s of stars){ 
+        if(!s.taken){ 
+          const rx = Math.round(s.x - cameraX); 
+          const ry = Math.round(s.y); 
+          
+          // Улучшенные звезды с анимацией
+          const pulse = Math.sin(performance.now() * 0.01) * 0.3 + 0.7;
+          const size = 8 * pulse;
+          
+          if(L.theme === 'space') {
+            ctx.fillStyle = '#ffff00'; 
+            drawStar(ctx, rx, ry, size, size*1.5, 5);
+            ctx.fillStyle = 'rgba(255,255,200,0.6)'; 
+            drawStar(ctx, rx, ry, size*1.5, size*2, 5);
+          } else if(L.theme === 'desert') {
+            ctx.fillStyle = '#ffd700'; 
+            drawStar(ctx, rx, ry, size, size*1.4, 5);
+            ctx.fillStyle = 'rgba(255,215,0,0.4)'; 
+            drawStar(ctx, rx, ry, size*1.4, size*1.8, 5);
+          } else if(L.theme === 'boss') {
+            ctx.fillStyle = '#ff6b6b'; 
+            drawStar(ctx, rx, ry, size, size*1.3, 5);
+            ctx.fillStyle = 'rgba(255,107,107,0.4)'; 
+            drawStar(ctx, rx, ry, size*1.3, size*1.7, 5);
+          } else if(L.theme === 'crystal') {
+            ctx.fillStyle = '#6b6bff'; 
+            drawStar(ctx, rx, ry, size, size*1.4, 5);
+            ctx.fillStyle = 'rgba(107,107,255,0.4)'; 
+            drawStar(ctx, rx, ry, size*1.4, size*1.8, 5);
+          } else if(L.theme === 'cloud') {
+            ctx.fillStyle = '#ff6bff'; 
+            drawStar(ctx, rx, ry, size, size*1.5, 5);
+            ctx.fillStyle = 'rgba(255,107,255,0.4)'; 
+            drawStar(ctx, rx, ry, size*1.5, size*2, 5);
+          } else if(L.theme === 'volcano') {
+            ctx.fillStyle = '#ff3300'; 
+            drawStar(ctx, rx, ry, size, size*1.3, 5);
+            ctx.fillStyle = 'rgba(255,100,0,0.4)'; 
+            drawStar(ctx, rx, ry, size*1.3, size*1.7, 5);
+          } else if(L.theme === 'jungle') {
+            ctx.fillStyle = '#33ff33'; 
+            drawStar(ctx, rx, ry, size, size*1.4, 5);
+            ctx.fillStyle = 'rgba(100,255,100,0.4)'; 
+            drawStar(ctx, rx, ry, size*1.4, size*1.8, 5);
+          } else if(L.theme === 'final') {
+            ctx.fillStyle = '#00ffff'; 
+            drawStar(ctx, rx, ry, size, size*1.6, 5);
+            ctx.fillStyle = 'rgba(0,255,255,0.4)'; 
+            drawStar(ctx, rx, ry, size*1.6, size*2.2, 5);
+          } else {
+            ctx.fillStyle = '#ffcc00';
+            drawStar(ctx, rx, ry, size, size*1.3, 5); 
+          }
+        } 
+      }
+
+      // Boss and boss attacks
+      if (currentLevel === 4 && boss.active) {
+        // Render boss
+        const bossRx = Math.round(boss.x - cameraX);
+        const bossRy = Math.round(boss.y);
+        
+        // Используем улучшенную отрисовку босса
+        drawBoss(bossRx, bossRy);
+        
+        // Render boss attacks
+        for (let attack of boss.attacks) {
+          const attackRx = Math.round(attack.x - cameraX);
+          const attackRy = Math.round(attack.y);
+          
+          ctx.fillStyle = attack.type === 'projectile' ? '#ff4444' : 
+                         attack.type === 'wave' ? '#44aaff' : '#ff44ff';
+          ctx.beginPath();
+          ctx.arc(attackRx + attack.w/2, attackRy + attack.h/2, attack.w/2, 0, Math.PI*2);
+          ctx.fill();
+          
+          // Glow effect
+          ctx.fillStyle = attack.type === 'projectile' ? 'rgba(255,68,68,0.3)' : 
+                         attack.type === 'wave' ? 'rgba(68,170,255,0.3)' : 'rgba(255,68,255,0.3)';
+          ctx.beginPath();
+          ctx.arc(attackRx + attack.w/2, attackRy + attack.h/2, attack.w, 0, Math.PI*2);
+          ctx.fill();
+        }
+      }
+
+      // Final Boss and attacks
+      if (currentLevel === 9 && finalBoss.active) {
+        // Render final boss
+        const bossRx = Math.round(finalBoss.x - cameraX);
+        const bossRy = Math.round(finalBoss.y);
+        drawFinalBoss(bossRx, bossRy);
+        
+        // Render final boss attacks
+        for (let attack of finalBoss.attacks) {
+          const attackRx = Math.round(attack.x - cameraX);
+          const attackRy = Math.round(attack.y);
+          
+          if (attack.type === 'blackhole') {
+            // Black hole attack
+            attack.timer += dt;
+            const pulse = 0.7 + Math.sin(attack.timer * 5) * 0.3;
+            
+            // Black hole gradient
+            const gradient = ctx.createRadialGradient(
+              attackRx + attack.w/2, attackRy + attack.h/2, 0,
+              attackRx + attack.w/2, attackRy + attack.h/2, attack.w/2
+            );
+            gradient.addColorStop(0, '#000000');
+            gradient.addColorStop(0.7, '#330066');
+            gradient.addColorStop(1, '#6600cc');
+            
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(attackRx + attack.w/2, attackRy + attack.h/2, attack.w/2 * pulse, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Pull effect on player
+            if (attack.timer < 3) {
+              const dx = (attack.x + attack.w/2) - (player.x + player.w/2);
+              const dy = (attack.y + attack.h/2) - (player.y + player.h/2);
+              const distance = Math.sqrt(dx*dx + dy*dy);
+              
+              if (distance < 300) {
+                const pullForce = attack.pullStrength / (distance * distance);
+                player.vx += (dx / distance) * pullForce * dt;
+                player.vy += (dy / distance) * pullForce * dt;
+              }
+            } else {
+              // Remove black hole after 3 seconds
+              finalBoss.attacks.splice(finalBoss.attacks.indexOf(attack), 1);
+            }
+          } else if (attack.type === 'laser') {
+            // Laser attack
+            attack.timer += dt;
+            if (attack.timer < 1) {
+              const laserIntensity = Math.sin(attack.timer * Math.PI * 5) * 0.5 + 0.5;
+              ctx.fillStyle = `rgba(255, 0, 0, ${laserIntensity * 0.7})`;
+              ctx.fillRect(attackRx, attackRy, attack.w, attack.h);
+              
+              // Check collision with player
+              if (player.x + player.w > attackRx && player.x < attackRx + attack.w &&
+                  player.y + player.h > attackRy && player.y < attackRy + attack.h &&
+                  player.invulnerable <= 0) {
+                player.health -= 30;
+                player.invulnerable = 1.5;
+                if (soundOn) playBeep(220, 0.1);
+                showDamage();
+                updatePlayerHealth();
+              }
+            } else {
+              // Remove laser after 1 second
+              finalBoss.attacks.splice(finalBoss.attacks.indexOf(attack), 1);
+            }
+          } else {
+            // Regular projectile attacks
+            ctx.fillStyle = attack.type === 'projectile' ? '#ff4444' : 
+                           attack.type === 'wave' ? '#44aaff' : '#ff44ff';
+            ctx.beginPath();
+            ctx.arc(attackRx + attack.w/2, attackRy + attack.h/2, attack.w/2, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Glow effect
+            ctx.fillStyle = attack.type === 'projectile' ? 'rgba(255,68,68,0.3)' : 
+                           attack.type === 'wave' ? 'rgba(68,170,255,0.3)' : 'rgba(255,68,255,0.3)';
+            ctx.beginPath();
+            ctx.arc(attackRx + attack.w/2, attackRy + attack.h/2, attack.w, 0, Math.PI*2);
+            ctx.fill();
+          }
+        }
+      }
+
+      // Player
+      const px = Math.round(player.x - cameraX); 
+      const py = Math.round(player.y);
+      const isIdle = Math.abs(player.vx) < 1 && player.onGround && Math.abs(player.vy) < 1;
+      const isAir = !player.onGround;
+      const isWalking = player.onGround && Math.abs(player.vx) >= 1;
+
+      // Инвulnerability blinking effect
+      const visible = player.invulnerable <= 0 || Math.floor(player.invulnerable * 10) % 2 === 0;
+      
+      if (visible) {
+        if(isAir){ 
+          const descending = player.vy > 70; 
+          const ascending = player.vy < -30; 
+          if(descending && fallLoaded){ drawSpriteCentered(fallImg, px, py, player.w*1.6, player.h*1.6, player.facing); } 
+          else if(ascending){ 
+            if(player.jumps === 1 && jump1Loaded) drawSpriteCentered(jump1Img, px, py, player.w*1.6, player.h*1.6, player.facing); 
+            else if(player.jumps >=2 && jump2Loaded) drawSpriteCentered(jump2Img, px, py, player.w*1.6, player.h*1.6, player.facing); 
+            else if(fallLoaded) drawSpriteCentered(fallImg, px, py, player.w*1.6, player.h*1.6, player.facing); 
+          } else { 
+            if(player.jumps === 1 && jump1Loaded) drawSpriteCentered(jump1Img, px, py, player.w*1.6, player.h*1.6, player.facing); 
+            else if(player.jumps >=2 && jump2Loaded) drawSpriteCentered(jump2Img, px, py, player.w*1.6, player.h*1.6, player.facing); 
+            else if(fallLoaded) drawSpriteCentered(fallImg, px, py, player.w*1.6, player.h*1.6, player.facing); 
+          } 
+        }
+        else if(isWalking && walkFramesLoaded()){ 
+          const frameImg = walkImgs[walkFrame]; 
+          drawSpriteCentered(frameImg, px, py, player.w*1.6, player.h*1.6, player.facing); 
+        }
+        else if(isIdle && idleLoaded){ 
+          drawSpriteCentered(idleImg, px, py, player.w*1.4, player.h*1.4, player.facing); 
+        }
+        else { 
+          if(fallLoaded) drawSpriteCentered(fallImg, px, py, player.w*1.6, player.h*1.6, player.facing); 
+        }
+      }
+
+      if(!running){ 
+        ctx.fillStyle='rgba(255,255,255,0.6)'; 
+        ctx.fillRect(0,0,W,H); 
+      }
+    }
+
+    // helpers
+    function roundRect(ctx,x,y,w,h,r,fill,stroke){ if(typeof r==='undefined') r=6; ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); if(fill) ctx.fill(); if(stroke) ctx.stroke(); }
+    function drawStar(ctx,x,y,r1,r2,pts){ ctx.save(); ctx.translate(x,y); ctx.beginPath(); for(let i=0;i<pts;i++){ let a = i*(Math.PI*2)/pts; ctx.lineTo(Math.cos(a)*r1, Math.sin(a)*r1); a += Math.PI/pts; ctx.lineTo(Math.cos(a)*r2, Math.sin(a)*r2); } ctx.closePath(); ctx.fillStyle='#ffcc00'; ctx.fill(); ctx.restore(); }
+    function drawSpriteCentered(img, px, py, drawW, drawH, facing=1){ if(!img || !img.width) return; const iw=img.width, ih=img.height; let w=drawW, h=drawH; const ar=iw/ih; if(w/h>ar) w=h*ar; else h=w/ar; ctx.save(); const cx = px + player.w/2; const cy = py + player.h/2; ctx.translate(cx, cy); if(facing < 0) ctx.scale(-1,1); ctx.drawImage(img, -w/2, -h/2, w, h); ctx.restore(); }
+
+    // ТЕКСТУРЫ ПЛАТФОРМ
+    function drawCityPlatform(rx, ry, w) {
+      ctx.fillStyle = '#2b3a55'; 
+      roundRect(ctx, rx, ry, w, 20, 6, true, false);
+      ctx.fillStyle = 'rgba(255,255,255,0.1)'; 
+      for(let i=0;i<w;i+=40){ ctx.fillRect(rx+15+i, ry+8, 10, 4); }
+    }
+
+    function drawForestPlatform(rx, ry, w) {
+      ctx.fillStyle = '#2a4a2a'; 
+      roundRect(ctx, rx, ry, w, 20, 6, true, false);
+      ctx.fillStyle = '#3a6a3a'; 
+      for(let i=0;i<w;i+=6){ const h=3+Math.sin(i*0.5)*2; ctx.fillRect(rx+i, ry-h, 2, h); }
+    }
+
+    function drawSpacePlatform(rx, ry, w) {
+      ctx.fillStyle = '#1a1a3a'; 
+      roundRect(ctx, rx, ry, w, 20, 6, true, false);
+      ctx.fillStyle = '#6b8bff'; 
+      for(let i=0;i<w;i+=12){ const b=0.3+Math.sin(i*0.3)*0.3; ctx.globalAlpha=b; ctx.beginPath(); ctx.arc(rx+i+6, ry+10, 1.5,0,Math.PI*2); ctx.fill(); }
+      ctx.globalAlpha=1;
+    }
+
+    function drawDesertPlatform(rx, ry, w) {
+      ctx.fillStyle = '#d4b16a'; 
+      roundRect(ctx, rx, ry, w, 20, 6, true, false);
+      ctx.fillStyle = '#b39654'; 
+      for(let i=0;i<w;i+=4){ const h=Math.sin(i*0.2)*2; ctx.fillRect(rx+i, ry+h, 2, 20-h*2); }
+    }
+
+    function drawBossPlatform(rx, ry, w) {
+      ctx.fillStyle = '#2a1a3a'; 
+      roundRect(ctx, rx, ry, w, 20, 6, true, false);
+      ctx.fillStyle = 'rgba(100,50,150,0.3)'; 
+      for(let i=0;i<w;i+=8){ ctx.fillRect(rx+i, ry, 4, 20); }
+    }
+
+    function drawCrystalPlatform(rx, ry, w) {
+      ctx.fillStyle = '#2a1a4a'; 
+      roundRect(ctx, rx, ry, w, 20, 6, true, false);
+      ctx.fillStyle = '#6b5bff'; 
+      for(let i=0;i<w;i+=15){ const h=5+Math.sin(i*0.5)*3; ctx.beginPath(); ctx.moveTo(rx+i, ry); ctx.lineTo(rx+i-3, ry-h); ctx.lineTo(rx+i+3, ry-h); ctx.closePath(); ctx.fill(); }
+    }
+
+    function drawCloudPlatform(rx, ry, w) {
+      // Основа платформы из облаков
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      
+      // Рисуем пушистую облачную платформу
+      ctx.beginPath();
+      ctx.arc(rx + w*0.2, ry + 5, 15, 0, Math.PI * 2);
+      ctx.arc(rx + w*0.4, ry, 20, 0, Math.PI * 2);
+      ctx.arc(rx + w*0.6, ry + 3, 18, 0, Math.PI * 2);
+      ctx.arc(rx + w*0.8, ry + 7, 16, 0, Math.PI * 2);
+      ctx.arc(rx + w, ry + 2, 14, 0, Math.PI * 2);
+      
+      // Соединяем облака
+      ctx.moveTo(rx, ry + 10);
+      ctx.lineTo(rx + w, ry + 10);
+      ctx.lineTo(rx + w, ry + 25);
+      ctx.lineTo(rx, ry + 25);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Тень от облаков
+      ctx.fillStyle = 'rgba(200,200,255,0.3)';
+      ctx.beginPath();
+      ctx.arc(rx + w*0.2, ry + 8, 12, 0, Math.PI * 2);
+      ctx.arc(rx + w*0.4, ry + 3, 17, 0, Math.PI * 2);
+      ctx.arc(rx + w*0.6, ry + 6, 15, 0, Math.PI * 2);
+      ctx.arc(rx + w*0.8, ry + 10, 13, 0, Math.PI * 2);
+      ctx.arc(rx + w, ry + 5, 11, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Радужные блики на облаках
+      const time = performance.now() * 0.001;
+      ctx.fillStyle = `hsla(${Math.sin(time) * 60 + 180}, 80%, 70%, 0.2)`;
+      ctx.beginPath();
+      ctx.arc(rx + w*0.3, ry + 2, 8, 0, Math.PI * 2);
+      ctx.arc(rx + w*0.7, ry + 1, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    function drawVolcanoPlatform(rx, ry, w) {
+      // Основа платформы
+      ctx.fillStyle = '#552200';
+      roundRect(ctx, rx, ry, w, 20, 6, true, false);
+      
+      // Лавовые трещины
+      ctx.fillStyle = '#ff3300';
+      for(let i=0; i<w; i+=15) {
+        const crackWidth = 3 + Math.sin(i*0.5) * 2;
+        ctx.fillRect(rx + i, ry, crackWidth, 5);
+      }
+      
+      // Лавовые пузыри
+      const time = performance.now() * 0.001;
+      for(let i=0; i<w; i+=25) {
+        const bubbleSize = 3 + Math.sin(time * 3 + i) * 2;
+        ctx.fillStyle = `rgba(255,100,0,${0.5 + Math.sin(time * 5 + i) * 0.3})`;
+        ctx.beginPath();
+        ctx.arc(rx + i + 10, ry - bubbleSize/2, bubbleSize, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    
+    function drawJunglePlatform(rx, ry, w) {
+      // Основа платформы
+      ctx.fillStyle = '#2a5a2a';
+      roundRect(ctx, rx, ry, w, 20, 6, true, false);
+      
+      // Трава и листья на платформе
+      ctx.fillStyle = '#3a7a3a';
+      for(let i=0; i<w; i+=10) {
+        const grassHeight = 5 + Math.sin(i*0.3) * 3;
+        ctx.fillRect(rx + i, ry - grassHeight, 3, grassHeight);
+      }
+      
+      // Цветы и грибы
+      const time = performance.now() * 0.001;
+      for(let i=0; i<w; i+=40) {
+        if(Math.random() < 0.7) {
+          // Цветок
+          const flowerSize = 4 + Math.sin(time * 2 + i) * 2;
+          ctx.fillStyle = `hsl(${Math.sin(time * 3 + i) * 30 + 300}, 80%, 60%)`;
+          ctx.beginPath();
+          ctx.arc(rx + i + 5, ry - flowerSize, flowerSize, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          // Гриб
+          const mushroomHeight = 6 + Math.sin(time + i) * 2;
+          ctx.fillStyle = '#ff6b6b';
+          ctx.fillRect(rx + i + 3, ry - mushroomHeight, 4, mushroomHeight);
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(rx + i + 5, ry - mushroomHeight - 2, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+
+    // init
+    initVolumeControl();
+    startLevel(0);
+    window.addEventListener('pointerdown', ()=>{ try{ audioCtx.resume(); }catch(e){} }, {once:true});
+  </script>
+</body>
+</html>
